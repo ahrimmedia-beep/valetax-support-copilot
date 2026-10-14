@@ -84,9 +84,12 @@ Output:
   * kind: "fact" for every sentence that states anything taken from the sources (amounts,
     times, steps, methods, documents, rules); "greeting" for an opening courtesy;
     "closing" for a closing courtesy; "handoff" for saying a colleague will follow up on a
-    point the sources do not answer. A greeting, closing or handoff states no facts: no
-    numbers, no payment methods, documents, fees, limits or bonuses, and at most 30 words
-    (e.g. "A colleague will follow up on your other question."). If in doubt, it is a fact.
+    point the sources do not answer. A greeting, closing or handoff states no facts and is
+    at most 30 words. It must not contain numbers, named items (payment methods, documents,
+    fees, limits, bonuses), time words (today, tomorrow, within, hours, days, instantly,
+    immediately, same day) or price words (free, fee, charge, cost). Any such content belongs
+    in a cited fact sentence. Keep a handoff generic, e.g. "A colleague will follow up on
+    your other question." If in doubt, it is a fact.
   * cites: for a fact, the 0-based positions in `citations` of the quotes that directly
     support THIS sentence (at least one); every number and named item in the sentence must
     be in those quotes' sources or in the ticket. Empty for greeting, closing and handoff.
