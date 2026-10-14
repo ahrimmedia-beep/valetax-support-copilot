@@ -4,12 +4,14 @@ copilot triage "My withdrawal is pending, what does it mean?"
 copilot triage --file eval/tickets.jsonl
 copilot triage --provider fake "..."     # offline, no API key needed
 copilot triage --json "..."              # full TriageResult as JSON
+copilot serve --provider fake            # agent console at http://127.0.0.1:8000
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -17,6 +19,7 @@ from pathlib import Path
 from copilot.llm import DEFAULT_MODEL, FakeProvider, LLMError, LLMProvider, OpenAIProvider
 from copilot.models import Ticket, TriageResult
 from copilot.pipeline import Copilot
+from copilot.voice import SpeechError
 
 
 def make_provider(name: str, model: str) -> LLMProvider:
@@ -60,6 +63,22 @@ def render(result: TriageResult, ticket: Ticket) -> str:
     return "\n".join(lines)
 
 
+def run_server(host: str, port: int, provider: str | None) -> int:
+    import uvicorn
+
+    from copilot.web.app import create_app
+
+    if provider:
+        os.environ["COPILOT_PROVIDER"] = provider
+    try:
+        app = create_app()
+    except (LLMError, SpeechError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    uvicorn.run(app, host=host, port=port)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="copilot", description="Support-ticket co-pilot")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -69,7 +88,16 @@ def main(argv: list[str] | None = None) -> int:
     triage.add_argument("--provider", choices=["openai", "fake"], default="openai")
     triage.add_argument("--model", default=DEFAULT_MODEL)
     triage.add_argument("--json", action="store_true", help="print full results as JSON lines")
+    serve = sub.add_parser("serve", help="run the agent console (web UI and API)")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument(
+        "--provider", choices=["openai", "fake"], help="default: openai if a key is set, else fake"
+    )
     args = parser.parse_args(argv)
+
+    if args.command == "serve":
+        return run_server(args.host, args.port, args.provider)
 
     if bool(args.text) == bool(args.file):
         parser.error("give either ticket text or --file")
