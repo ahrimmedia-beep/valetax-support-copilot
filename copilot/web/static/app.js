@@ -1,808 +1,1127 @@
-/* Operator console. Vanilla ES module, no build step.
-   Talks to the Web API (see copilot/web/app.py) and renders one TriageResult at a time. */
+// Operator console: one ticket at a time, every step of the pipeline visible,
+// every fact in the reply traceable to the help-centre sentence it came from.
 
-const RTL = new Set(["ar", "ckb", "fa", "ur", "he"]);
+const RTL_LANGS = new Set(["ar", "ckb", "fa", "ur", "he"]);
+const RTL_CHARS = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
+const LTR_CHARS = /[A-Za-zЀ-ӿऀ-ॿ]/;
 const STEPS = ["guardrails", "redaction", "classify", "retrieve", "draft", "verify", "route"];
 const STEP_NAMES = {
-  guardrails: "Guardrails",
-  redaction: "Redaction",
-  classify: "Classify",
-  retrieve: "Retrieve",
-  draft: "Draft",
-  verify: "Verify",
-  route: "Route",
+  guardrails: "Guardrails", redaction: "Redaction", classify: "Classify", retrieve: "Retrieve",
+  draft: "Draft", verify: "Verify", route: "Route",
 };
-// Deterministic regex flags. These alone send a ticket to a human and are shown in red.
-const HARD_FLAGS = ["trading_advice", "prompt_injection", "fraud", "legal_threat"];
-const FLAG_LABELS = {
-  trading_advice: "Trading advice",
-  complaint: "Complaint",
-  kyc_aml: "KYC / AML",
-  account_blocked: "Account blocked",
-  legal_threat: "Legal threat",
-  fraud: "Fraud",
-  money_issue: "Money issue",
-  prompt_injection: "Prompt injection",
+const GROUPS = { core: "Core eval set", real_themes: "Real-world themes" };
+
+// Guardrail flags. Red is kept for the hard rules only.
+const FLAGS = {
+  trading_advice: ["Trading advice", "blue"],
+  prompt_injection: ["Prompt injection", "red"],
+  fraud: ["Fraud", "red"],
+  legal_threat: ["Legal threat", "red"],
+  account_blocked: ["Account blocked", "amber"],
+  kyc_aml: ["KYC / AML", "amber"],
+  complaint: ["Complaint", "amber"],
+  money_issue: ["Money issue", "amber"],
 };
-const ROUTE_TEXT = {
-  auto_draft: ["Auto draft", "Grounded reply. Send after a glance."],
-  human_review: ["Human review", "Read, decide and edit before sending."],
-  decline_trading_advice: ["Decline: trading advice", "Fixed, compliance-approved text."],
+
+const ROUTES = {
+  auto_draft: {
+    cls: "r-auto", title: "Auto-draft",
+    verdict: "Grounded and checked. Safe to send after a quick read.",
+  },
+  human_review: {
+    cls: "r-review", title: "Human review",
+    verdict: "An agent must read, decide and edit before anything is sent.",
+  },
+  decline_trading_advice: {
+    cls: "r-decline", title: "Decline: trading advice",
+    verdict: "Fixed, compliance-approved decline. No advice is given.",
+  },
 };
+
+// Routing and draft codes -> [severity, plain-English reason].
+const SEV_LABEL = { risk: "Risk", review: "Review", draft: "Draft", policy: "Policy", ok: "Passed", error: "Error" };
+const SEV_CLASS = { risk: "sev-block", review: "sev-review", draft: "sev-review", policy: "sev-info", ok: "sev-ok", error: "sev-block" };
 const REASONS = {
-  grounded_answer_all_checks_passed: "Grounded answer, every check passed",
-  trading_advice: "Customer asks for trading advice",
-  complaint: "Complaint",
-  kyc_aml: "KYC or AML topic",
-  account_blocked: "Account blocked",
-  legal_threat: "Legal threat",
-  fraud: "Possible fraud",
-  money_issue: "Money missing or delayed",
-  prompt_injection: "Prompt injection attempt",
-  urgency_high: "High urgency",
-  urgency_critical: "Critical urgency",
-  negative_sentiment_money: "Negative tone on a money topic",
-  abstained: "Draft held back",
-  partially_covered: "KB answers only part of the question",
-  specific_term_not_in_kb: "Ticket names something the KB does not mention",
-  pipeline_error: "Pipeline error",
-  kb_not_covered: "KB does not cover this question",
-  low_retrieval_score: "No KB chunk matched well enough",
-  citation_check_failed: "A citation did not match the source text",
-  ungrounded_number: "Draft contained a number that is not in the KB",
-  ungrounded_term: "Draft contained a term that is not in the KB",
-  unsafe_reply: "Draft failed the reply safety scan",
-  no_support_question: "No support question in the ticket",
-  llm_error: "Model call failed",
+  grounded_answer_all_checks_passed: ["ok", "Every fact is quoted from the help centre and all checks passed"],
+  trading_advice: ["policy", "Asks for trading or investment advice, which the broker cannot give"],
+  complaint: ["review", "Complaint about the service or a transaction"],
+  kyc_aml: ["review", "Verification or compliance (KYC / AML) matter"],
+  account_blocked: ["review", "Account is blocked or restricted"],
+  legal_threat: ["risk", "Threatens legal action or a chargeback"],
+  fraud: ["risk", "Possible fraud or an unauthorised payment"],
+  money_issue: ["review", "Customer money is missing, delayed or rejected"],
+  prompt_injection: ["risk", "Message tries to override the co-pilot's rules"],
+  urgency_high: ["review", "High urgency"],
+  urgency_critical: ["risk", "Critical urgency"],
+  negative_sentiment_money: ["review", "Upset customer writing about a deposit or withdrawal"],
+  abstained: ["draft", "Reply held back: nothing grounded to send"],
+  partially_covered: ["draft", "Help centre answers only part of the question"],
+  specific_term_not_in_kb: ["draft", "Mentions something the help centre does not cover"],
+  pipeline_error: ["error", "A pipeline step failed, so the ticket falls back to a person"],
+  kb_not_covered: ["draft", "Help centre does not cover this question"],
+  low_retrieval_score: ["draft", "No help-centre article matched closely enough"],
+  no_support_question: ["draft", "No support question found to answer"],
+  citation_check_failed: ["draft", "A quote did not match its source word for word"],
+  llm_error: ["error", "The model call failed"],
+  uncited_fact: ["draft", "A factual sentence had no citation"],
+  bad_cite: ["draft", "A sentence pointed to a citation that does not exist"],
+  ungrounded_number: ["draft", "A number in the reply is not in the sources"],
+  ungrounded_term: ["draft", "A term in the reply is not in the sources"],
+  sentence_number_not_in_its_source: ["draft", "A sentence uses a number its own source does not contain"],
+  sentence_term_not_in_its_source: ["draft", "A sentence uses a term its own source does not contain"],
+  unsafe_reply: ["risk", "Reply text tripped a safety rule"],
 };
-const REASON_TONE = {
-  grounded_answer_all_checks_passed: "green",
-  trading_advice: "blue",
-  prompt_injection: "red",
-  fraud: "red",
-  legal_threat: "red",
-};
+
+function reasonInfo(code) {
+  if (REASONS[code]) return REASONS[code];
+  if (code.startsWith("fact_disguised_as_")) {
+    return ["draft", "A courtesy sentence states a fact without a citation"];
+  }
+  const words = code.replace(/_/g, " ");
+  return ["review", words.charAt(0).toUpperCase() + words.slice(1)];
+}
 
 const state = {
   health: null,
   samples: [],
-  kb: null,
-  result: null,
-  transcript: null,
-  activeId: null,
-  busy: false,
-  editing: false,
-  feedback: null,
-  audio: null,
-  recorder: null,
+  kb: { version: "", pages: [] },
+  chunks: new Map(),
+  stats: null,
+  current: null, // { result, meta, original, cites, sent }
+  handled: new Map(),
 };
 
-const $ = (sel) => document.querySelector(sel);
-const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const wide = window.matchMedia("(min-width: 900px)");
+const motion = () => Boolean(window.gsap) && !reduceMotion.matches;
+const $ = (sel, root = document) => root.querySelector(sel);
+
+// ---------- DOM helpers ----------
 
 function h(tag, attrs = {}, ...children) {
-  const el = document.createElement(tag);
+  const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
-    if (v == null || v === false) continue;
-    if (k === "class") el.className = v;
-    else if (k === "text") el.textContent = v;
-    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
-    else el.setAttribute(k, v === true ? "" : v);
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v === true ? "" : v);
   }
   for (const c of children.flat()) {
-    if (c == null || c === false) continue;
-    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    if (c === null || c === undefined || c === false) continue;
+    node.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
-  return el;
+  return node;
 }
+
+function fmtMs(ms) {
+  if (ms >= 1000) return [(ms / 1000).toFixed(2), "s"];
+  if (ms >= 100) return [Math.round(ms).toString(), "ms"];
+  if (ms >= 10) return [ms.toFixed(1), "ms"];
+  return [ms.toFixed(2), "ms"];
+}
+
+function isRtl(lang, text) {
+  if (RTL_LANGS.has((lang || "").toLowerCase())) return true;
+  const first = (text || "").match(new RegExp(`${RTL_CHARS.source}|${LTR_CHARS.source}`));
+  return Boolean(first && RTL_CHARS.test(first[0]));
+}
+const dirFor = (lang, text) => (isRtl(lang, text) ? "rtl" : "auto");
+const firstLine = (t) => t.split(/\n/).find((l) => l.trim()) || t;
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 async function api(path, opts = {}) {
   const res = await fetch(path, opts);
   if (!res.ok) {
-    let msg = `${res.status} ${res.statusText}`;
+    let detail = `${res.status} ${res.statusText}`;
     try {
       const body = await res.json();
-      if (typeof body.detail === "string") msg = body.detail;
-      else if (Array.isArray(body.detail)) msg = body.detail.map((d) => d.msg).join("; ");
-    } catch (_) {
-      /* non-JSON error body */
-    }
-    throw new Error(msg);
+      if (typeof body.detail === "string") detail = body.detail;
+      else if (Array.isArray(body.detail)) detail = body.detail.map((d) => d.msg).join("; ");
+    } catch { /* not JSON */ }
+    throw new Error(detail);
   }
   return res;
 }
+const getJson = async (path) => (await api(path)).json();
+const postJson = async (path, body) =>
+  api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-const fmtMs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${ms < 10 ? ms.toFixed(2) : Math.round(ms)} ms`);
-const dirFor = (lang) => (RTL.has(lang) ? "rtl" : "auto");
-const reasonText = (code) => REASONS[code] || code.replaceAll("_", " ");
-const shortHash = (s) => (s || "").slice(0, 8);
-
-/* ---------- Top bar ---------- */
+// ---------- Top bar ----------
 
 function renderStatus() {
   const box = $("#status");
   box.replaceChildren();
   const hc = state.health;
-  if (!hc) return;
-  const live = hc.provider === "openai";
-  box.append(
-    h("span", { class: `pill ${live ? "" : "off"}`, title: `LLM provider: ${hc.provider}` }, h("span", { class: "dot" }), live ? "Live" : "Fake provider", hc.model !== hc.provider ? h("b", { text: hc.model }) : null),
-    h("span", { class: "pill" }, "KB", h("b", { text: shortHash(hc.kb_version) })),
-    h("span", { class: "pill" }, "Prompt", h("b", { text: hc.prompt_version })),
-    h("span", { class: "pill" }, "Speech", h("b", { text: hc.speech })),
-  );
-}
-
-/* ---------- Inbox ---------- */
-
-function renderSamples() {
-  const list = $("#samples");
-  list.replaceChildren();
-  const groups = [
-    ["core", "Core eval set"],
-    ["real_themes", "Real-world themes"],
-  ];
-  for (const [key, title] of groups) {
-    const rows = state.samples.filter((s) => s.group === key);
-    if (!rows.length) continue;
-    list.append(h("div", { class: "group-title" }, h("span", { text: title }), h("span", { text: String(rows.length) })));
-    for (const s of rows) {
-      list.append(
-        h(
-          "button",
-          {
-            type: "button",
-            class: `sample ${s.id === state.activeId ? "active" : ""}`,
-            "data-id": s.id,
-            onclick: () => runSample(s),
-          },
-          h("span", { class: "lang", text: s.language }),
-          h("span", { class: "text", dir: "auto", text: s.text.split("\n")[0] }),
-          h("span", { class: "label", text: s.label }),
-        ),
-      );
-    }
-  }
-  $("#sample-count").textContent = state.samples.length ? `${state.samples.length} tickets` : "";
-}
-
-function markActive() {
-  for (const el of document.querySelectorAll(".sample")) el.classList.toggle("active", el.dataset.id === state.activeId);
-}
-
-async function runSample(s) {
-  $("#ticket-text").value = s.text;
-  state.activeId = s.id;
-  markActive();
-  await runTriage(s.text, s.id);
-  if (window.innerWidth <= 900) $("#work").scrollIntoView({ behavior: reduced() ? "auto" : "smooth" });
-}
-
-/* ---------- Triage ---------- */
-
-async function runTriage(text, id) {
-  if (state.busy) return;
-  text = (text || "").trim();
-  if (!text) {
-    note("Type or paste a ticket first.", true);
+  if (!hc) {
+    box.append(h("span", { class: "pill off" }, h("span", { class: "dot" }), "API unreachable"));
     return;
   }
-  state.busy = true;
-  state.transcript = null;
-  state.feedback = null;
-  state.editing = false;
-  $("#run").disabled = true;
-  note("");
-  renderLoading(text);
-  try {
-    const res = await api("/api/triage", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(id ? { text, id } : { text }),
-    });
-    state.result = await res.json();
-    renderResult();
-  } catch (err) {
-    renderError(`Co-pilot request failed: ${err.message}`, text);
-  } finally {
-    state.busy = false;
-    $("#run").disabled = false;
-  }
-}
-
-async function sendVoice(blob, filename) {
-  if (state.busy) return;
-  state.busy = true;
-  state.feedback = null;
-  state.editing = false;
-  $("#run").disabled = true;
-  note("Transcribing…");
-  renderLoading("(voice message)");
-  try {
-    const form = new FormData();
-    form.append("audio", blob, filename);
-    const res = await api("/api/voice", { method: "POST", body: form });
-    const body = await res.json();
-    state.transcript = body.transcript;
-    state.result = body.result;
-    state.activeId = null;
-    markActive();
-    $("#ticket-text").value = body.transcript.text;
-    note("");
-    renderResult();
-  } catch (err) {
-    note("");
-    renderError(`Voice request failed: ${err.message}`);
-  } finally {
-    state.busy = false;
-    $("#run").disabled = false;
-  }
-}
-
-function note(msg, isError = false) {
-  const el = $("#compose-note");
-  el.textContent = msg;
-  el.classList.toggle("error", isError);
-}
-
-/* ---------- Work column ---------- */
-
-function renderEmpty() {
-  $("#work").replaceChildren(
-    h(
-      "div",
-      { class: "empty" },
-      h("h3", { text: "Pick a ticket or paste one" }),
-      h("p", { text: "The co-pilot classifies the message, drafts a reply from the public help pages only, and tells you whether it is safe to send or needs a human." }),
-      h("p", { text: "Every sentence of the draft points to the exact source line it came from." }),
-    ),
-  );
-  renderKb();
-}
-
-function renderLoading(text) {
-  const work = $("#work");
-  work.replaceChildren(
-    ticketCard(text, null),
-    h(
-      "section",
-      { class: "card" },
-      h("div", { class: "card-head" }, h("h3", { text: "Pipeline" }), h("span", { class: "meta", text: "Running…" })),
-      rail(null),
-    ),
-    h("section", { class: "card" }, h("div", { class: "skeleton", style: "width:40%" }), h("div", { class: "skeleton", style: "width:70%;margin-top:10px" }), h("div", { class: "skeleton", style: "width:55%;margin-top:10px" })),
-  );
-  renderKb();
-}
-
-function renderError(message, text) {
-  const work = $("#work");
-  work.replaceChildren(
-    text ? ticketCard(text, null) : null,
-    h("div", { class: "banner error" }, message),
-    h("button", { type: "button", class: "btn", onclick: () => runTriage($("#ticket-text").value, state.activeId) }, "Try again"),
+  const live = hc.provider === "openai";
+  box.append(
+    h("span", { class: `pill ${live ? "" : "off"}`, title: `LLM provider: ${hc.provider}` },
+      h("span", { class: "dot" }), live ? "Live" : "Fake provider",
+      hc.model !== hc.provider ? h("b", {}, hc.model) : null),
+    h("span", { class: "pill" }, "KB", h("b", {}, hc.kb_version.slice(0, 8))),
+    h("span", { class: "pill" }, "Prompt", h("b", {}, hc.prompt_version)),
+    h("span", { class: "pill" }, "Speech", h("b", {}, hc.speech)),
   );
 }
 
-function ticketCard(text, r) {
-  const lang = r ? r.classification.language : null;
-  const head = h("div", { class: "card-head" }, h("h3", { text: r ? `Ticket ${r.ticket_id}` : "Ticket" }));
-  if (lang) head.append(h("span", { class: "lang", text: lang }));
-  if (r && r.guardrails.pii_types.length) {
-    head.append(h("span", { class: "chip grey", title: "Removed before any model call" }, "PII redacted: ", r.guardrails.pii_types.join(", ")));
+// ---------- Inbox ----------
+
+function renderInbox() {
+  const nav = $("#inbox");
+  const q = $("#filter").value.trim().toLowerCase();
+  const rows = state.samples.filter(
+    (s) => !q || `${s.id} ${s.text} ${s.label} ${s.language}`.toLowerCase().includes(q),
+  );
+  nav.replaceChildren();
+  $("#inbox-count").textContent = q ? `${rows.length} of ${state.samples.length}` : String(state.samples.length);
+  if (!rows.length) {
+    nav.append(h("p", { class: "muted pad" }, state.samples.length ? "No tickets match." : "No sample tickets found."));
+    return;
   }
-  const card = h("section", { class: "card" }, head);
-  if (state.transcript && r) {
-    const t = state.transcript;
-    card.append(
-      h(
-        "div",
-        { class: "transcript" },
-        h("span", {}, h("b", { text: "Voice transcript" })),
-        h("span", { text: `language ${t.language}` }),
-        h("span", { text: `${(t.duration_ms / 1000).toFixed(1)} s` }),
-        h("span", { text: t.model }),
-        h("span", { text: `$${Number(t.cost_usd).toFixed(4)}` }),
-      ),
+  for (const group of Object.keys(GROUPS)) {
+    const items = rows.filter((s) => s.group === group);
+    if (!items.length) continue;
+    const list = h("div", { role: "list" });
+    for (const s of items) list.append(h("div", { role: "listitem" }, inboxRow(s)));
+    nav.append(
+      h("div", { class: "group" },
+        h("h3", { class: "group-head" }, h("span", {}, GROUPS[group]), h("span", {}, String(items.length))),
+        list),
     );
   }
-  card.append(h("p", { class: "ticket-text", dir: lang ? dirFor(lang) : "auto", text }));
-  return card;
 }
 
-function stepState(step, r) {
-  if (!r) return "is-pending";
-  const d = step.detail || "";
-  if (d.startsWith("skipped")) return "skip";
-  if (step.step === "route") return `route-${r.decision.route}`;
-  if (step.step === "guardrails") {
-    if (d.startsWith("no flags")) return "ok";
-    const hard = HARD_FLAGS.some((f) => r.guardrails[f] && r.guardrails[f].length);
-    return hard ? "flag" : "warn";
-  }
-  if (step.step === "verify" && d.startsWith("failed")) return "warn";
-  if (step.step === "draft" && d.startsWith("abstained")) return "warn";
-  if (step.step === "redaction" && d.startsWith("redacted")) return "warn";
-  return "ok";
-}
-
-// Trace details are written for logs; shorten the dense ones for the 7-column rail.
-function prettyDetail(step) {
-  const d = step.detail || "";
-  if (step.step === "classify" && d.startsWith("category=")) {
-    return d.split(/\s+/).map((kv) => kv.split("=")[1] || kv).join(" · ");
-  }
-  if (step.step === "retrieve") {
-    const m = d.match(/^top (\d+) of (\d+) chunks.*score ([\d.]+)\)/);
-    if (m) return `${m[1]} of ${m[2]} chunks · best ${m[3]}`;
-  }
-  if (step.step === "route") {
-    const [route, rest] = d.split(/:\s*/, 2);
-    const n = rest ? rest.split(",").length : 0;
-    return n ? `${route.replaceAll("_", " ")} · ${n} reason${n === 1 ? "" : "s"}` : route.replaceAll("_", " ");
-  }
-  return d;
-}
-
-function rail(r) {
-  const steps = r ? r.trace : STEPS.map((s) => ({ step: s, ms: 0, detail: "" }));
-  const ol = h("ol", { class: `rail ${r ? "" : "loading"}` });
-  for (const s of steps) {
-    const cls = stepState(s, r);
-    ol.append(
-      h(
-        "li",
-        { class: `step ${cls}`, "data-step": s.step },
-        h("span", { class: "node" }),
-        h("span", { class: "name", text: STEP_NAMES[s.step] || s.step }),
-        h("span", { class: "ms num" }, r && cls !== "skip" ? fmtMs(s.ms) : "—"),
-        h("span", { class: "detail", title: s.detail, text: r ? prettyDetail(s) : "" }),
-      ),
-    );
-  }
-  return ol;
-}
-
-function classificationChips(r) {
-  const c = r.classification;
-  const chips = h("div", { class: "chips" });
-  const kv = (k, v, cls = "") => h("span", { class: `chip ${cls}` }, h("span", { class: "k", text: `${k} ` }), v);
-  chips.append(
-    kv("category", c.category.replaceAll("_", " ")),
-    kv("urgency", c.urgency, c.urgency === "critical" ? "red" : c.urgency === "high" ? "amber" : ""),
-    kv("language", c.language),
-    kv("sentiment", c.sentiment, c.sentiment === "negative" ? "amber" : ""),
+function inboxRow(s) {
+  const current = state.current?.meta?.sampleId === s.id;
+  const done = state.handled.get(s.id);
+  return h("button", {
+    type: "button", class: "tk", "data-id": s.id, "aria-current": current ? "true" : "false",
+    onclick: () => openSample(s),
+  },
+    h("span", { class: "lang", title: `Language: ${s.language}` }, s.language || "—"),
+    h("span", { class: "tk-text", dir: dirFor(s.language, s.text) }, firstLine(s.text)),
+    h("span", { class: "tk-meta" },
+      h("span", { class: "id" }, s.id),
+      h("span", { class: "gold", title: `Expected: ${s.label}` }, goldShort(s.label)),
+      done ? h("span", { class: "gold", style: "color:var(--green-ink)" }, `· ${done}`) : null),
   );
-  for (const f of Object.keys(FLAG_LABELS)) {
-    const hits = r.guardrails[f] || [];
-    if (hits.length) {
-      chips.append(
-        h("span", { class: `chip ${HARD_FLAGS.includes(f) ? "red" : "amber"}`, title: `Matched: ${hits.join(" · ")}` }, "Rule: ", FLAG_LABELS[f]),
-      );
+}
+
+const GOLD_ROUTE = { auto_draft: "auto", human_review: "review", decline_trading_advice: "decline" };
+function goldShort(label) {
+  const [route, cat = ""] = label.split(" · ");
+  const r = GOLD_ROUTE[route] || route;
+  return h("span", { class: `gold-route g-${r}` }, r, h("span", { class: "gold-cat" }, ` · ${cat.replace(/_/g, " ")}`));
+}
+
+function markCurrentRow() {
+  for (const b of document.querySelectorAll(".tk")) {
+    const on = b.dataset.id === state.current?.meta?.sampleId;
+    b.setAttribute("aria-current", on ? "true" : "false");
+    if (on && wide.matches) {
+      const list = $("#inbox");
+      const lr = list.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      if (br.top < lr.top + 30 || br.bottom > lr.bottom) list.scrollTop += br.top - lr.top - lr.height / 3;
     }
   }
-  for (const t of c.sensitive_topics || []) {
-    if (!(r.guardrails[t] || []).length) chips.append(h("span", { class: "chip amber" }, "Model: ", FLAG_LABELS[t] || t));
-  }
-  if (!c.sensitive_topics.length && !Object.keys(FLAG_LABELS).some((f) => (r.guardrails[f] || []).length)) {
-    chips.append(h("span", { class: "chip green" }, "No flags"));
-  }
-  return chips;
 }
+
+function openSample(s) {
+  runTriage(s.text, s.id, { sampleId: s.id, source: GROUPS[s.group] || "Sample", language: s.language, gold: s.label, ticketText: s.text });
+}
+
+// ---------- Triage ----------
+
+let runSeq = 0;
+
+async function runTriage(text, id, meta) {
+  const seq = ++runSeq;
+  state.current = { meta, result: null };
+  markCurrentRow();
+  showLoading(text, meta, "Running the pipeline…");
+  try {
+    const res = await postJson("/api/triage", id ? { text, id } : { text });
+    const result = await res.json();
+    if (seq !== runSeq) return;
+    showResult(result, meta);
+  } catch (err) {
+    if (seq !== runSeq) return;
+    showError("The co-pilot could not process this ticket.", err.message);
+  }
+}
+
+function setBusy(busy) {
+  $("#workspace").setAttribute("aria-busy", busy ? "true" : "false");
+  $("#run").disabled = busy;
+}
+
+function showLoading(text, meta, label) {
+  setBusy(true);
+  $("#empty").hidden = true;
+  const box = $("#result");
+  box.hidden = false;
+  const rail = h("ol", { class: "rail" }, h("span", { class: "rail-track", "aria-hidden": "true" }),
+    STEPS.map((s, i) => h("li", { class: "step st-skip" },
+      h("span", { class: "node" }, String(i + 1)), h("span", { class: "step-name" }, STEP_NAMES[s]))));
+  box.replaceChildren(h("div", { class: "result loading" },
+    text ? ticketCard(text, meta, null) : null,
+    h("section", { class: "card trace" },
+      h("div", { class: "card-head", style: "padding:0" },
+        h("h2", { class: "card-title" }, "Pipeline"), h("span", { class: "card-sub" }, label)),
+      rail),
+    h("section", { class: "card card-body" },
+      h("div", { class: "skeleton", style: "width:60%" }), h("div", { class: "skeleton", style: "width:85%;margin-top:10px" }),
+      h("div", { class: "skeleton", style: "width:40%;margin-top:10px" })),
+  ));
+}
+
+function showError(title, detail) {
+  setBusy(false);
+  $("#empty").hidden = true;
+  const box = $("#result");
+  box.hidden = false;
+  box.replaceChildren(h("div", { class: "result" },
+    h("section", { class: "card error-card", role: "alert" }, h("strong", {}, title), detail)));
+}
+
+function showResult(r, meta, transcript = null) {
+  setBusy(false);
+  const cites = citationIndex(r.draft);
+  state.current = { result: r, meta, cites, original: r.draft.reply, sent: false, transcript };
+  markCurrentRow();
+  const box = $("#result");
+  box.hidden = false;
+  $("#empty").hidden = true;
+  const wrap = h("div", { class: "result" },
+    ticketCard(meta.ticketText || "", meta, r, transcript),
+    traceCard(r),
+    routeCard(r),
+    replyCard(r, meta),
+    auditBlock(r),
+  );
+  box.replaceChildren(wrap);
+  renderSources(r);
+  animateIn(wrap);
+  if (!wide.matches) $("#workspace").scrollIntoView({ block: "start", behavior: motion() ? "smooth" : "auto" });
+}
+
+// Ticket text with the guardrail matches highlighted in place.
+function ticketCard(text, meta, r, transcript = null) {
+  const lang = meta.language || r?.classification.language || "";
+  const metaRow = h("div", { class: "ticket-meta" },
+    h("span", { class: "lang", title: "Language" }, lang || "—"),
+    h("span", { class: "mono" }, r?.ticket_id || meta.sampleId || "new ticket"),
+    h("span", { class: "sep", "aria-hidden": "true" }, "|"),
+    h("span", {}, meta.source || "Pasted"),
+  );
+  if (meta.gold && r) {
+    const goldRoute = meta.gold.split(" · ")[0];
+    const ok = goldRoute === r.decision.route;
+    metaRow.append(h("span", { class: "sep", "aria-hidden": "true" }, "|"),
+      h("span", { class: `expect ${ok ? "is-match" : "is-miss"}` },
+        h("span", { class: "tick", "aria-hidden": "true" }, ok ? "✓" : "≠"),
+        ok ? `Matches expected route (${goldRoute})` : `Expected ${goldRoute}, got ${r.decision.route}`));
+  }
+  const body = h("p", { class: "ticket-text", dir: dirFor(lang, text), lang: lang || null });
+  body.append(...highlightFlags(text, r?.guardrails));
+  return h("section", { class: "card card-body", "aria-label": "Ticket" },
+    transcript ? h("div", { class: "transcript" },
+      h("b", {}, "Voice transcript"),
+      transcript.language ? h("span", {}, `language ${transcript.language}`) : null,
+      transcript.duration_ms ? h("span", {}, `${(transcript.duration_ms / 1000).toFixed(1)} s audio`) : null,
+      h("span", {}, transcript.model),
+      h("span", {}, `$${Number(transcript.cost_usd || 0).toFixed(4)}`)) : null,
+    metaRow, body, r ? chipsRow(r) : null);
+}
+
+function highlightFlags(text, flags) {
+  if (!flags) return [text];
+  const ranges = [];
+  const lower = text.toLowerCase();
+  for (const [key, [label, tone]] of Object.entries(FLAGS)) {
+    for (const snip of flags[key] || []) {
+      let from = 0;
+      const needle = snip.toLowerCase();
+      if (!needle) continue;
+      let at;
+      while ((at = lower.indexOf(needle, from)) !== -1) {
+        ranges.push({ start: at, end: at + needle.length, tone, label });
+        from = at + needle.length;
+      }
+    }
+  }
+  if (!ranges.length) return [text];
+  ranges.sort((a, b) => a.start - b.start || b.end - a.end);
+  const merged = [];
+  for (const rg of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && rg.start < last.end) {
+      last.end = Math.max(last.end, rg.end);
+      if (rg.tone === "red") last.tone = "red";
+      if (!last.label.includes(rg.label)) last.label += `, ${rg.label}`;
+    } else merged.push({ ...rg });
+  }
+  const out = [];
+  let pos = 0;
+  for (const rg of merged) {
+    if (rg.start > pos) out.push(text.slice(pos, rg.start));
+    out.push(h("mark", { class: `hit hit-${rg.tone}`, title: `Guardrail: ${rg.label}` },
+      text.slice(rg.start, rg.end), h("span", { class: "sr-only" }, ` (flagged: ${rg.label})`)));
+    pos = rg.end;
+  }
+  if (pos < text.length) out.push(text.slice(pos));
+  return out;
+}
+
+function chipsRow(r) {
+  const c = r.classification;
+  const chip = (k, v, cls = "") => h("span", { class: `chip ${cls}` }, h("b", {}, k), v);
+  const row = h("div", { class: "chips", "aria-label": "Classification and flags" },
+    chip("Category", c.category.replace(/_/g, " ")),
+    chip("Urgency", c.urgency, c.urgency === "critical" ? "chip-red" : c.urgency === "high" ? "chip-amber" : ""),
+    chip("Language", c.language),
+    chip("Sentiment", c.sentiment, c.sentiment === "negative" ? "chip-amber" : ""),
+  );
+  const g = r.guardrails;
+  const seen = new Set();
+  for (const [key, [label, tone]] of Object.entries(FLAGS)) {
+    const hit = (g[key] || []).length || c.sensitive_topics.includes(key);
+    if (!hit || seen.has(key)) continue;
+    seen.add(key);
+    const by = (g[key] || []).length ? "rule" : "model";
+    row.append(h("span", {
+      class: `chip chip-flag chip-${tone}`,
+      title: (g[key] || []).length ? `Matched: ${g[key].join(" | ")}` : "Raised by the classifier",
+    }, label, h("b", {}, by)));
+  }
+  if (g.pii_types.length) {
+    row.append(h("span", { class: "chip", title: "Redacted before the model saw the text" },
+      h("b", {}, "PII redacted"), g.pii_types.join(", ")));
+  }
+  return row;
+}
+
+// ---------- Pipeline trace ----------
+
+function stepTone(t, r) {
+  const d = t.detail || "";
+  if (d.startsWith("skipped")) return ["skip", "Skipped"];
+  if (d.startsWith("failed")) return ["fail", "Failed"];
+  if (d.startsWith("abstained")) return ["warn", "Held"];
+  if (t.step === "guardrails" && !d.startsWith("no flags")) {
+    const tones = Object.entries(FLAGS).filter(([k]) => (r.guardrails[k] || []).length).map(([, v]) => v[1]);
+    if (tones.includes("red")) return ["fail", "Flagged"];
+    if (tones.includes("amber")) return ["warn", "Flagged"];
+    return ["info", "Flagged"];
+  }
+  if (t.step === "redaction" && d.startsWith("redacted")) return ["info", "Redacted"];
+  if (t.step === "verify") return ["ok", "Passed"];
+  if (t.step === "route") {
+    const rt = r.decision.route;
+    return rt === "auto_draft" ? ["ok", "Auto"] : rt === "human_review" ? ["warn", "Review"] : ["info", "Decline"];
+  }
+  return ["ok", "Done"];
+}
+
+function traceCard(r) {
+  const byStep = new Map(r.trace.map((t) => [t.step, t]));
+  const steps = STEPS.map((s) => byStep.get(s) || { step: s, ms: 0, detail: "not run" });
+  const total = steps.reduce((a, t) => a + t.ms, 0);
+  const rail = h("ol", { class: "rail", "aria-label": "Pipeline steps" },
+    h("span", { class: "rail-track", "aria-hidden": "true" }),
+    h("span", { class: "rail-fill", "aria-hidden": "true" }),
+    steps.map((t, i) => {
+      const [tone, label] = stepTone(t, r);
+      const [n, unit] = fmtMs(t.ms);
+      return h("li", { class: `step st-${tone}`, title: t.detail },
+        h("span", { class: "node", "aria-hidden": "true" }, String(i + 1)),
+        h("span", { class: "step-name" }, STEP_NAMES[t.step]),
+        h("span", { class: "step-ms" }, n, h("small", {}, ` ${unit}`)),
+        h("span", { class: "step-state" }, label),
+        h("span", { class: "step-detail" }, t.detail.replace(/([=,_#:])/g, "$1\u200b")));
+    }));
+  const slowest = steps.reduce((a, t) => (t.ms > a.ms ? t : a), steps[0]);
+  const bar = h("div", { class: "budget-bar", role: "img",
+    "aria-label": `Time per step. Slowest: ${STEP_NAMES[slowest.step]}` },
+  steps.map((t) => h("span", {
+    class: t === slowest && t.ms > 0 ? "is-big" : "",
+    style: `flex-grow:${Math.max(t.ms, total * 0.012 || 1)}`,
+    title: `${STEP_NAMES[t.step]}: ${fmtMs(t.ms).join(" ")}`,
+  })));
+  const [tn, tu] = fmtMs(r.total_latency_ms);
+  const [ln, lu] = fmtMs(r.usage.llm_latency_ms);
+  return h("section", { class: "card trace", "aria-label": "Pipeline trace" },
+    h("div", { class: "card-head", style: "padding:0" },
+      h("h2", { class: "card-title" }, "Pipeline"),
+      h("span", { class: "card-sub" }, `${steps.filter((t) => !t.detail.startsWith("skipped")).length} of 7 steps ran`)),
+    rail,
+    h("div", { class: "budget" }, bar,
+      h("div", { class: "budget-legend" },
+        h("span", {}, "Slowest ", h("b", {}, STEP_NAMES[slowest.step]), ` ${fmtMs(slowest.ms).join(" ")}`),
+        h("span", {}, "Model time ", h("b", {}, `${ln} ${lu}`), " · Total ", h("b", {}, `${tn} ${tu}`)))));
+}
+
+// ---------- Route ----------
 
 function routeCard(r) {
-  const route = r.decision.route;
-  const [title, sub] = ROUTE_TEXT[route] || [route, ""];
-  const reasons = h("ul", { class: "reasons" });
+  const route = ROUTES[r.decision.route] || { cls: "r-review", title: r.decision.route, verdict: "" };
+  const list = h("ul", { class: "reasons", "aria-label": "Why" });
   for (const code of r.decision.reasons) {
-    const tone = REASON_TONE[code] || (route === "human_review" ? "amber" : route === "auto_draft" ? "green" : "blue");
-    reasons.append(h("li", { class: tone }, h("span", { text: reasonText(code) }), h("code", { text: code })));
-  }
-  if (r.errors && r.errors.length) {
-    for (const e of r.errors) reasons.append(h("li", { class: "red" }, h("span", { text: e })));
-  }
-  return h(
-    "section",
-    { class: "card" },
-    h("div", { class: "card-head" }, h("h3", { text: "Route" }), h("span", { class: "meta", text: "Rules only, no model in this step" })),
-    h(
-      "div",
-      { class: "route" },
-      h("div", { class: `route-badge ${route}`, id: "route-badge" }, h("span", { class: "big", text: title }), h("span", { class: "sub", text: sub })),
-      reasons,
-    ),
-  );
-}
-
-/* Draft: sentences with citation markers. Hovering a fact sentence lights its source chunks. */
-function draftView(r) {
-  const d = r.draft;
-  const lang = r.classification.language;
-  const box = h("div", { class: "draft-view", dir: dirFor(lang), id: "draft-view" });
-  const citeIndex = new Map(d.citations.map((c, i) => [c.chunk_id, i + 1]));
-  if (d.sentences && d.sentences.length) {
-    d.sentences.forEach((s, i) => {
-      const isFact = s.kind === "fact" && s.chunk_ids.length;
-      const span = h("span", { class: `sent ${s.kind}${isFact ? " fact" : ""}`, "data-chunks": s.chunk_ids.join(" "), tabindex: isFact ? "0" : null, role: isFact ? "button" : null }, s.text);
-      if (isFact) {
-        const refs = s.chunk_ids.map((id) => citeIndex.get(id)).filter(Boolean);
-        if (refs.length) span.append(h("sup", { class: "ref", text: refs.join(",") }));
-        span.addEventListener("mouseenter", () => light(s.chunk_ids, true));
-        span.addEventListener("mouseleave", () => light(s.chunk_ids, false));
-        span.addEventListener("focus", () => light(s.chunk_ids, true));
-        span.addEventListener("blur", () => light(s.chunk_ids, false));
-        const jump = () => revealChunk(s.chunk_ids[0]);
-        span.addEventListener("click", jump);
-        span.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            jump();
-          }
-        });
-      }
-      box.append(span, i < d.sentences.length - 1 ? " " : "");
-    });
-  } else {
-    for (const para of d.reply.split(/\n{2,}/)) box.append(h("p", { style: "margin:0 0 8px", text: para }));
-  }
-  return box;
-}
-
-function draftCard(r) {
-  const d = r.draft;
-  const route = r.decision.route;
-  const head = h("div", { class: "card-head" }, h("h3", { text: route === "decline_trading_advice" ? "Reply (fixed text)" : "Draft reply" }));
-  if (d.coverage !== "not_applicable") {
-    head.append(h("span", { class: `chip ${d.coverage === "full" ? "green" : d.coverage === "partial" ? "amber" : "grey"}` }, "coverage ", d.coverage));
-    head.append(h("span", { class: "meta", text: `${d.citations_valid} of ${d.citations_proposed} citations verified` }));
-  }
-  const card = h("section", { class: "card" }, head);
-  if (d.abstained) {
-    const b = h("div", { class: "banner warn" }, h("b", { text: "Holding reply — KB does not cover this." }), " The customer gets an acknowledgement; a human answers.");
-    const ul = h("ul");
-    for (const p of d.problems) {
-      const [code, rest] = p.split(/:(.*)/s);
-      ul.append(h("li", {}, reasonText(code), rest ? h("span", { style: "color:var(--muted)", text: ` (${rest.trim()})` }) : null));
+    const [sev, text] = reasonInfo(code);
+    let extra = null;
+    if (code === "specific_term_not_in_kb" && r.draft.unanswered_terms.length) {
+      extra = h("small", {}, ` (${r.draft.unanswered_terms.join(", ")})`);
     }
-    if (d.unanswered_terms.length) ul.append(h("li", {}, "Not in the KB: ", h("b", { text: d.unanswered_terms.join(", ") })));
-    b.append(ul);
-    card.append(b);
-  } else if (route === "decline_trading_advice") {
-    card.append(h("div", { class: "banner info" }, "Fixed compliance text in the customer's language. Nothing here was generated."));
+    list.append(h("li", { class: "reason" },
+      h("span", { class: `sev ${SEV_CLASS[sev]}` }, SEV_LABEL[sev]),
+      h("span", {}, text, extra, h("span", { class: "reason-code" }, code))));
+  }
+  if (r.errors.length) {
+    list.append(h("li", { class: "reason" }, h("span", { class: "sev sev-block" }, "Error"),
+      h("span", { class: "errors" }, r.errors.join("; "))));
+  }
+  return h("section", { class: `card route ${route.cls}`, "aria-label": "Routing decision" },
+    h("div", { class: "route-side" },
+      h("span", { class: "eyebrow" }, "Route", h("span", { class: "route-code" }, r.decision.route)),
+      h("span", { class: "route-badge" }, route.title),
+      h("p", { class: "route-verdict", style: "margin:0" }, route.verdict)),
+    list);
+}
+
+// ---------- Reply ----------
+
+function citationIndex(draft) {
+  const byChunk = new Map(); // chunk_id -> { n, quotes[] }
+  let n = 0;
+  for (const c of draft.citations) {
+    if (!byChunk.has(c.chunk_id)) byChunk.set(c.chunk_id, { n: ++n, quotes: [] });
+    byChunk.get(c.chunk_id).quotes.push(c.quote);
+  }
+  return byChunk;
+}
+
+function replyCard(r, meta) {
+  const d = r.draft;
+  const lang = r.classification.language || meta.language;
+  // The reply's own script decides its direction (a holding reply may be English for an Arabic ticket).
+  const dir = dirFor("", d.reply);
+  const route = r.decision.route;
+  const cites = state.current.cites;
+  const parts = [];
+
+  // The pipeline prepends the fixed decline to the reply; it is not part of draft.sentences.
+  const trading = r.decision.reasons.includes("trading_advice");
+  if (trading) {
+    const declineText = d.reply.split("\n\n")[0];
+    const rest = d.reply.length > declineText.length;
+    parts.push(h("div", { class: "banner banner-blue decline", role: "note" },
+      h("strong", {}, "Fixed decline (compliance template)"),
+      h("span", {}, rest
+        ? "Sent first. Not generated, nothing to cite. The answer to the rest of the ticket follows below."
+        : "Not generated, nothing to cite. No trading advice is given."),
+      h("p", { class: "decline-text", dir: dirFor("", declineText) }, declineText)));
   }
 
-  const editor = h("textarea", { class: "draft-edit", id: "draft-edit", dir: dirFor(r.classification.language), "aria-label": "Edit reply" });
-  editor.value = d.reply;
-  card.append(state.editing ? editor : draftView(r));
-  if (!state.editing && d.sentences && d.sentences.some((s) => s.kind === "fact")) {
-    card.append(h("p", { class: "legend" }, h("span", {}, h("span", { class: "swatch" }), "Fact from a KB source: hover to see it, click to open"), h("span", { text: "Numbers are superscript citation refs" })));
+  if (d.abstained) {
+    const problems = d.problems.map((p) => {
+      const [code, ...rest] = p.split(":");
+      const detail = rest.join(":").trim();
+      return h("li", {}, reasonInfo(code)[1], detail ? h("span", { class: "mono" }, ` ${detail}`) : null);
+    });
+    parts.push(h("div", { class: "banner banner-amber", role: "note" },
+      h("strong", {}, "Holding reply — KB does not cover this"),
+      h("span", {}, "The customer gets a neutral holding message. An agent writes the real answer."),
+      problems.length ? h("ul", {}, problems) : null));
+  } else if (d.problems.length) {
+    parts.push(h("div", { class: "banner banner-amber", role: "note" },
+      h("strong", {}, "Draft checks raised problems"),
+      h("ul", {}, d.problems.map((p) => {
+        const [code, ...rest] = p.split(":");
+        return h("li", {}, reasonInfo(code)[1], rest.length ? h("span", { class: "mono" }, ` ${rest.join(":").trim()}`) : null);
+      }))));
   }
 
-  const actions = h("div", { class: "actions" });
-  const fb = state.feedback;
-  if (fb) {
-    actions.append(h("span", { class: `feedback ${fb.ok ? "ok" : "error"}`, text: fb.text }));
-  } else if (state.editing) {
-    actions.append(
-      h("button", { type: "button", class: "btn primary", onclick: () => submitFeedback("edited", $("#draft-edit").value) }, "Send edited"),
-      h("button", { type: "button", class: "btn", onclick: () => { state.editing = false; renderResult(false); } }, "Cancel"),
-    );
-  } else {
-    actions.append(
-      h("button", { type: "button", class: "btn primary", onclick: () => submitFeedback("sent_as_is", d.reply) }, "Send as is"),
-      h("button", { type: "button", class: "btn", onclick: () => { state.editing = true; renderResult(false); $("#draft-edit").focus(); } }, "Edit & send"),
-      h("button", { type: "button", class: "btn danger", onclick: () => submitFeedback("rejected", null) }, "Reject"),
-      h("button", { type: "button", class: "btn", id: "listen", onclick: () => listen(d.reply, r.classification.language) }, "Listen"),
-    );
+  if (d.sentences.length) {
+    const facts = d.sentences.filter((s) => s.kind === "fact").length;
+    const para = h("p", { class: "sentences", dir, id: "sentences" });
+    d.sentences.forEach((s, i) => {
+      if (i) para.append(" ");
+      const nums = [...new Set(s.chunk_ids.map((id) => cites.get(id)?.n).filter(Boolean))];
+      const isFact = s.kind === "fact";
+      const label = isFact
+        ? `Fact, cited from ${nums.map((x) => `source ${x}`).join(", ") || "no source"}`
+        : `${s.kind} sentence, states no facts`;
+      para.append(h("span", {
+        class: `sent ${isFact ? "sent-fact" : "sent-courtesy"}`,
+        "data-chunks": s.chunk_ids.join(" "),
+        tabindex: isFact ? "0" : null,
+        role: isFact ? "button" : null,
+        "aria-label": isFact ? `${s.text}. ${label}` : null,
+        title: isFact ? null : label,
+      }, s.text, nums.map((x) => h("span", { class: "cite", "aria-hidden": "true" }, String(x)))));
+    });
+    parts.push(h("div", { class: "evidence" },
+      h("div", { class: "evidence-head" },
+        h("span", { class: "eyebrow" }, "Evidence"),
+        h("span", { class: "card-sub", style: "margin:0" },
+          `${facts} fact${facts === 1 ? "" : "s"} · ${d.citations_valid}/${d.citations_proposed} quotes verified · coverage ${d.coverage}`),
+        h("span", { class: "legend", "aria-hidden": "true" },
+          h("span", {}, h("i"), "Cited fact"), h("span", {}, h("i", { class: "c" }), "Courtesy"))),
+      para,
+      h("p", { class: "stale-note", id: "stale-note", hidden: true },
+        "Reply edited. The evidence above refers to the original draft.")));
   }
-  card.append(actions);
+
+  const ta = h("textarea", {
+    id: "reply", dir, lang: lang || null, spellcheck: "true", "aria-describedby": "reply-count",
+  });
+  ta.value = d.reply;
+  const count = h("span", { id: "reply-count" }, `${d.reply.length} chars`);
+  ta.addEventListener("input", onReplyInput);
+  parts.push(h("div", { class: "editor" },
+    h("label", { class: "editor-label", for: "reply" }, "Reply to customer", count), ta));
+
+  const primaryEdit = route === "human_review";
+  const sendBtn = h("button", { type: "button", class: `btn ${primaryEdit ? "" : "btn-primary"}`, id: "act-send",
+    onclick: () => sendFeedback("sent_as_is") }, "Send as is");
+  const editBtn = h("button", { type: "button", class: `btn ${primaryEdit ? "btn-primary" : ""}`, id: "act-edit",
+    onclick: onEditSend }, "Edit & send");
+  parts.push(h("div", { class: "actions" },
+    sendBtn, editBtn,
+    h("button", { type: "button", class: "btn btn-danger", id: "act-reject", onclick: () => sendFeedback("rejected") }, "Reject"),
+    h("span", { class: "spacer" }),
+    h("button", { type: "button", class: "btn btn-ghost", id: "act-listen", onclick: onListen }, "Listen"),
+    h("p", { class: "action-msg", id: "action-msg", role: "status", "aria-live": "polite" })));
+
+  const card = h("section", { class: "card reply", "aria-label": "Draft reply" },
+    h("div", { class: "card-head" }, h("h2", { class: "card-title" }, "Draft reply"),
+      h("span", { class: "card-sub" }, primaryEdit ? "Edit before sending" : route === "auto_draft" ? "Ready after a read" : "Approved template")),
+    parts);
+  wireSentences(card);
   return card;
 }
 
-function auditCard(r) {
-  const u = r.usage;
-  const item = (k, v, mono = false) => h("div", {}, h("span", { class: `v ${mono ? "mono" : ""}`, text: v }), k);
-  return h(
-    "section",
-    { class: "card" },
-    h("div", { class: "card-head" }, h("h3", { text: "Audit" }), h("span", { class: "meta", text: "Stored with the decision" })),
-    h(
-      "div",
-      { class: "audit" },
-      item("model", r.model, true),
-      item("prompt", r.prompt_version, true),
-      item("KB version", r.kb_version, true),
-      item("input SHA-256", `${shortHash(r.input_sha256)}…`, true),
-      item("tokens in / out", `${u.input_tokens} / ${u.output_tokens}`),
-      item("cost", `$${Number(u.cost_usd).toFixed(4)}`),
-      item("model calls", String(u.calls)),
-      item("latency", fmtMs(r.total_latency_ms)),
-    ),
-  );
+function onReplyInput() {
+  const ta = $("#reply");
+  const edited = ta.value !== state.current.original;
+  ta.classList.toggle("is-edited", edited);
+  $("#reply-count").textContent = `${ta.value.length} chars${edited ? " · edited" : ""}`;
+  $("#sentences")?.classList.toggle("is-stale", edited);
+  const note = $("#stale-note");
+  if (note) note.hidden = !edited;
+  if (!state.current.sent) $("#act-send").disabled = edited;
 }
 
-function renderResult(animate = true) {
-  const r = state.result;
-  const work = $("#work");
-  work.replaceChildren(
-    ticketCard($("#ticket-text").value.trim() || "(empty)", r),
-    h(
-      "section",
-      { class: "card" },
-      h("div", { class: "card-head" }, h("h3", { text: "Pipeline" }), h("span", { class: "meta", text: `${r.trace.length} steps` }), h("div", { class: "right" }, h("span", { class: "num", text: fmtMs(r.total_latency_ms) }))),
-      rail(r),
-      h("div", { style: "margin-top:14px" }, classificationChips(r)),
-    ),
-    routeCard(r),
-    draftCard(r),
-    auditCard(r),
-  );
-  renderKb();
-  if (animate) animateResult();
-  if (animate) work.scrollTop = 0;
-}
-
-function animateResult() {
-  if (reduced() || !window.gsap) return;
-  const steps = document.querySelectorAll(".rail .step");
-  const badge = $("#route-badge");
-  const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
-  tl.from(steps, { opacity: 0.25, duration: 0.2, stagger: 0.055 }, 0);
-  tl.from(document.querySelectorAll(".rail .node"), { scale: 0.6, duration: 0.25, stagger: 0.055, ease: "back.out(2)" }, 0.02);
-  if (badge) tl.from(badge, { scale: 0.9, opacity: 0, duration: 0.22, ease: "back.out(1.8)" }, 0.4);
-}
-
-/* ---------- Feedback, TTS ---------- */
-
-async function submitFeedback(action, finalText) {
-  const r = state.result;
-  const payload = { ticket_id: r.ticket_id, input_sha256: r.input_sha256, route: r.decision.route, action };
-  if (finalText != null) payload.final_text = finalText;
-  try {
-    await api("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    const label = { sent_as_is: "Logged: sent as is", edited: "Logged: edited and sent", rejected: "Logged: rejected" }[action];
-    state.feedback = { ok: true, text: label };
-  } catch (err) {
-    state.feedback = { ok: false, text: `Feedback not saved: ${err.message}` };
+function onEditSend() {
+  const ta = $("#reply");
+  if (ta.value === state.current.original) {
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    say("Edit the reply, then press Edit & send again.");
+    return;
   }
-  state.editing = false;
-  renderResult(false);
+  sendFeedback("edited");
 }
 
-async function listen(text, language) {
-  const btn = $("#listen");
-  if (state.audio) {
-    state.audio.pause();
-    state.audio = null;
+function say(text, kind = "") {
+  const msg = $("#action-msg");
+  if (!msg) return;
+  msg.className = `action-msg ${kind}`;
+  msg.textContent = text;
+}
+
+const ACTION_DONE = { sent_as_is: "sent as is", edited: "edited and sent", rejected: "rejected" };
+
+async function sendFeedback(action) {
+  const cur = state.current;
+  if (!cur?.result || cur.sent) return;
+  const r = cur.result;
+  const ta = $("#reply");
+  if (action !== "rejected" && !ta.value.trim()) {
+    say("The reply is empty.", "is-error");
+    return;
+  }
+  const body = { ticket_id: r.ticket_id, input_sha256: r.input_sha256, route: r.decision.route, action };
+  if (action === "edited") body.final_text = ta.value;
+  if (action === "sent_as_is") body.final_text = cur.original;
+  const btns = ["#act-send", "#act-edit", "#act-reject"].map((s) => $(s));
+  btns.forEach((b) => { b.disabled = true; });
+  try {
+    await postJson("/api/feedback", body);
+    cur.sent = true;
+    ta.readOnly = true;
+    if (cur.meta.sampleId) state.handled.set(cur.meta.sampleId, ACTION_DONE[action]);
+    await refreshStats();
+    const n = state.stats?.total;
+    say(`Logged: ${ACTION_DONE[action]}. Feedback log now holds ${n ?? "?"} decision${n === 1 ? "" : "s"}.`, "is-ok");
+    renderInbox();
+  } catch (err) {
+    btns.forEach((b) => { b.disabled = false; });
+    onReplyInput();
+    say(`Could not log the decision: ${err.message}`, "is-error");
+  }
+}
+
+let audioUrl = null;
+async function onListen() {
+  const btn = $("#act-listen");
+  const player = $("#player");
+  if (!player.paused) {
+    player.pause();
     btn.textContent = "Listen";
     return;
   }
+  const text = $("#reply").value.trim().slice(0, 2000);
+  if (!text) return;
   btn.disabled = true;
   btn.textContent = "Loading…";
   try {
-    const res = await api("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text.slice(0, 2000), language }) });
-    const url = URL.createObjectURL(await res.blob());
-    const audio = new Audio(url);
-    state.audio = audio;
-    audio.addEventListener("ended", () => {
-      state.audio = null;
-      btn.textContent = "Listen";
-      URL.revokeObjectURL(url);
-    });
-    await audio.play();
+    const res = await postJson("/api/tts", { text, language: state.current.result.classification.language || "en" });
+    const blob = await res.blob();
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    audioUrl = URL.createObjectURL(blob);
+    player.src = audioUrl;
+    await player.play();
     btn.textContent = "Stop";
+    player.onended = () => { btn.textContent = "Listen"; };
   } catch (err) {
     btn.textContent = "Listen";
-    state.feedback = null;
-    const actions = btn.closest(".actions");
-    actions.querySelector(".feedback")?.remove();
-    actions.append(h("span", { class: "feedback error", text: `Speech unavailable: ${err.message}` }));
+    say(`Audio could not be played: ${(err.message || "unsupported audio").replace(/\.+$/, "")}.`, "is-error");
   } finally {
     btn.disabled = false;
   }
 }
 
-/* ---------- Sources ---------- */
+// ---------- Audit ----------
 
-const chunkElId = (id) => `chunk-${id.replace(/[^a-z0-9]+/gi, "-")}`;
-
-function markQuote(text, quotes) {
-  const frag = document.createDocumentFragment();
-  let rest = text;
-  const q = quotes.find((x) => x && text.includes(x));
-  if (!q) {
-    frag.append(text);
-    return frag;
-  }
-  const i = rest.indexOf(q);
-  frag.append(rest.slice(0, i), h("mark", { text: q }), rest.slice(i + q.length));
-  return frag;
+function auditBlock(r) {
+  const u = r.usage;
+  const sha = r.input_sha256;
+  const copy = h("button", { type: "button", class: "copy", title: `Copy full hash ${sha}`, onclick: async (e) => {
+    try { await navigator.clipboard.writeText(sha); e.currentTarget.textContent = "copied"; } catch { /* no clipboard */ }
+  } }, sha.slice(0, 12));
+  const item = (k, v, mono = false) => h("div", {}, h("dt", {}, k),
+    h("dd", { class: mono ? "mono" : "", title: typeof v === "string" ? v : null }, v));
+  return h("dl", { class: "audit", "aria-label": "Audit", style: "margin:0" },
+    item("Model", r.model, true),
+    item("Prompt", r.prompt_version, true),
+    item("KB", r.kb_version.slice(0, 12), true),
+    item("Input SHA-256", copy, true),
+    item("Tokens in / out", `${u.input_tokens.toLocaleString()} / ${u.output_tokens.toLocaleString()}`),
+    item("LLM calls", String(u.calls)),
+    item("Cost USD", `$${u.cost_usd.toFixed(4)}`),
+    item("Latency", fmtMs(r.total_latency_ms).join(" ")));
 }
 
-function renderKb() {
-  const box = $("#kb");
-  box.replaceChildren();
-  const kb = state.kb;
-  if (!kb) return;
-  const r = state.result;
-  const cited = new Map();
-  const retrieved = new Map();
-  if (r) {
-    for (const c of r.draft.citations) cited.set(c.chunk_id, [...(cited.get(c.chunk_id) || []), c.quote]);
-    for (const s of r.retrieved) retrieved.set(s.chunk.id, s.score);
-  }
-  const citeOrder = r ? r.draft.citations.map((c) => c.chunk_id) : [];
-  $("#kb-meta").textContent = `${kb.pages.length} pages · ${kb.pages.reduce((n, p) => n + p.chunks.length, 0)} chunks · ${shortHash(kb.version)}`;
+// ---------- Sources ----------
 
-  for (const page of kb.pages) {
-    const nCited = page.chunks.filter((c) => cited.has(c.id)).length;
-    const nRetrieved = page.chunks.filter((c) => retrieved.has(c.id)).length;
-    const open = r ? nCited > 0 || nRetrieved > 0 : false;
-    const summary = h(
-      "summary",
-      {},
-      h("span", { class: "chev" }),
-      h("span", { text: page.title }),
-      nCited ? h("span", { class: "cited-n", text: `${nCited} cited` }) : h("span", { class: "n", text: `${page.chunks.length}` }),
-      h(
-        "a",
-        { href: page.url, target: "_blank", rel: "noopener", title: `Open ${page.url}`, "aria-label": `Open ${page.title} on valetax.com`, onclick: (e) => e.stopPropagation() },
-        h("svg", { width: "12", height: "12", viewBox: "0 0 12 12", "aria-hidden": "true" }),
-      ),
-    );
-    summary.querySelector("svg").innerHTML = '<path d="M4.5 2H2.5A.5.5 0 0 0 2 2.5v7a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5V7.5M7 2h3v3M10 2 5.5 6.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>';
-    const details = h("details", { class: "page", open });
-    details.append(summary);
-    for (const c of page.chunks) {
-      const isCited = cited.has(c.id);
-      const score = retrieved.get(c.id);
-      const cls = isCited ? "cited" : score != null ? "retrieved" : "other";
-      const head = h("div", { class: "h" });
-      if (isCited) head.append(h("span", { class: "tag", text: String(citeOrder.indexOf(c.id) + 1) }));
-      head.append(h("span", { text: c.heading }));
-      if (score != null) head.append(h("span", { class: "score num", text: `BM25 ${score.toFixed(1)}` }));
-      const body = h("p", { class: "body" });
-      // FAQ chunk text starts with its own question; the heading already shows it.
-      const text = c.text.startsWith(c.heading + "\n") ? c.text.slice(c.heading.length + 1) : c.text;
-      body.append(isCited ? markQuote(text, cited.get(c.id)) : text);
-      const el = h("div", { class: `chunk ${cls}`, id: chunkElId(c.id) }, head, body);
-      if (cls !== "cited") head.addEventListener("click", () => el.classList.toggle("open"));
-      details.append(el);
-    }
-    box.append(details);
-  }
-  if (!r) box.append(h("p", { class: "sources-note", text: "Public help pages the co-pilot may quote. Cited chunks open here with the exact quote marked." }));
-}
-
-function light(chunkIds, on) {
-  for (const id of chunkIds) {
-    const el = document.getElementById(chunkElId(id));
-    if (!el) continue;
-    el.classList.toggle("lit", on);
-    if (on && !reduced() && window.gsap) {
-      const marks = el.querySelectorAll("mark");
-      if (marks.length) gsap.fromTo(marks, { backgroundColor: "#bfe9c9" }, { backgroundColor: "#e6f7e6", duration: 0.45, ease: "power1.out" });
+function renderSources(r) {
+  const root = $("#sources");
+  root.replaceChildren();
+  const cites = r ? state.current.cites : new Map();
+  const retrieved = new Map((r?.retrieved || []).map((s) => [s.chunk.id, s]));
+  let totalChunks = 0;
+  const pages = state.kb.pages.map((p) => {
+    totalChunks += p.chunks.length;
+    const cited = p.chunks.filter((c) => cites.has(c.id)).length;
+    const got = p.chunks.filter((c) => retrieved.has(c.id) && !cites.has(c.id)).length;
+    return { p, cited, got };
+  });
+  // Retrieved chunks the KB payload does not list still deserve a place.
+  for (const [id, s] of retrieved) {
+    if (!state.chunks.has(id)) {
+      let entry = pages.find((x) => x.p.slug === s.chunk.page);
+      if (!entry) {
+        entry = { p: { slug: s.chunk.page, url: s.chunk.url, title: s.chunk.page, chunks: [] }, cited: 0, got: 0 };
+        pages.push(entry);
+      }
+      entry.p.chunks.push({ id, heading: s.chunk.heading, text: s.chunk.text });
+      if (cites.has(id)) entry.cited++; else entry.got++;
     }
   }
-  for (const s of document.querySelectorAll(".sent.fact")) {
-    const ids = (s.dataset.chunks || "").split(" ");
-    if (ids.some((i) => chunkIds.includes(i))) s.classList.toggle("lit", on);
-  }
+  pages.sort((a, b) => b.cited - a.cited || b.got - a.got);
+
+  const nCited = cites.size;
+  const nGot = [...retrieved.keys()].filter((id) => !cites.has(id)).length;
+  $("#sources-count").textContent = `${pages.length} pages · ${totalChunks} sections`;
+  $("#sources-sum").textContent = r
+    ? (nCited || nGot
+      ? `${nCited} cited · ${nGot} retrieved but not used. Hover a fact in the reply to find its quote.`
+      : "Nothing retrieved for this ticket.")
+    : `Help-centre knowledge base${state.kb.version ? `, version ${state.kb.version.slice(0, 7)}` : ""}.`;
+
+  for (const { p, cited, got } of pages) root.append(pageCard(p, cited, got, cites, retrieved, Boolean(r)));
 }
 
-function revealChunk(id) {
-  const el = document.getElementById(chunkElId(id));
-  if (!el) return;
-  const page = el.closest("details");
-  if (page) page.open = true;
-  el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "center" });
-}
-
-/* ---------- Voice input ---------- */
-
-function setupVoice() {
-  const mic = $("#mic");
-  const file = $("#audio-file");
-  if (!navigator.mediaDevices || !window.MediaRecorder) {
-    mic.disabled = true;
-    mic.title = "Recording is not available in this browser";
-  }
-  let chunks = [];
-  const start = async () => {
-    if (state.recorder || state.busy) return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      chunks = [];
-      rec.addEventListener("dataavailable", (e) => e.data.size && chunks.push(e.data));
-      rec.addEventListener("stop", () => {
-        stream.getTracks().forEach((t) => t.stop());
-        state.recorder = null;
-        mic.classList.remove("recording");
-        mic.setAttribute("aria-pressed", "false");
-        mic.querySelector("span").textContent = "Hold to record";
-        const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
-        if (blob.size < 1000) {
-          note("Recording too short.", true);
-          return;
-        }
-        sendVoice(blob, "ticket.webm");
-      });
-      rec.start();
-      state.recorder = rec;
-      mic.classList.add("recording");
-      mic.setAttribute("aria-pressed", "true");
-      mic.querySelector("span").textContent = "Recording… release to send";
-    } catch (err) {
-      note(`Microphone unavailable: ${err.message}`, true);
+function pageCard(p, cited, got, cites, retrieved, hasResult) {
+  const open = cited + got > 0;
+  const bodyId = `pg-${p.slug}`;
+  const body = h("div", { class: "page-body", id: bodyId, hidden: !open });
+  const featured = p.chunks.filter((c) => cites.has(c.id) || retrieved.has(c.id));
+  featured.sort((a, b) => (cites.get(a.id)?.n ?? 99) - (cites.get(b.id)?.n ?? 99) ||
+    (retrieved.get(b.id)?.score ?? 0) - (retrieved.get(a.id)?.score ?? 0));
+  const rest = p.chunks.filter((c) => !featured.includes(c));
+  for (const c of featured) body.append(chunkCard(c, cites.get(c.id), retrieved.get(c.id)));
+  if (rest.length) {
+    const more = h("div", { hidden: featured.length > 0, style: "display:grid;gap:6px" },
+      rest.map((c) => chunkCard(c, null, null)));
+    if (featured.length) {
+      const btn = h("button", { type: "button", class: "btn btn-ghost", style: "height:30px;font-size:12px;justify-self:start",
+        "aria-expanded": "false", onclick: () => {
+          more.hidden = !more.hidden;
+          btn.setAttribute("aria-expanded", String(!more.hidden));
+          btn.textContent = more.hidden ? `Show ${rest.length} other sections` : "Hide other sections";
+        } }, `Show ${rest.length} other sections`);
+      body.append(btn);
     }
+    body.append(more);
+  }
+  const toggle = h("button", { type: "button", class: "page-toggle", "aria-expanded": String(open), "aria-controls": bodyId,
+    onclick: () => {
+      body.hidden = !body.hidden;
+      toggle.setAttribute("aria-expanded", String(!body.hidden));
+    } },
+  h("span", { class: "chev", "aria-hidden": "true" }),
+  h("span", { class: "page-title" }, p.title),
+  h("span", { class: "page-badges" },
+    cited ? h("span", { class: "pb pb-cited" }, `${cited} cited`) : null,
+    got ? h("span", { class: "pb" }, `${got} retrieved`) : null,
+    !hasResult || (!cited && !got) ? h("span", { class: "pb" }, `${p.chunks.length}`) : null));
+  return h("article", { class: `page${cited ? " is-cited" : ""}` },
+    h("div", { class: "page-head" }, toggle,
+      h("a", { class: "page-link", href: p.url, target: "_blank", rel: "noopener noreferrer",
+        title: `Open ${p.url} in a new tab` }, "Open", h("span", { class: "sr-only" }, ` ${p.title} (new tab)`))),
+    body);
+}
+
+function chunkCard(c, cite, scored) {
+  const kind = cite ? "is-cited" : scored ? "is-retrieved" : "";
+  const open = Boolean(cite);
+  const textId = `ck-${c.id.replace(/[^a-z0-9]/gi, "-")}`;
+  const textEl = h("p", { class: "chunk-text", id: textId, dir: "auto" });
+  const body = bodyOf(c);
+  textEl.append(...(cite ? markQuotes(c, body, cite) : [body]));
+  const wrap = h("div", { hidden: !open }, textEl, h("span", { class: "chunk-id" }, c.id));
+  const head = h("button", { type: "button", class: "chunk-head", "aria-expanded": String(open), "aria-controls": textId,
+    onclick: () => {
+      wrap.hidden = !wrap.hidden;
+      head.setAttribute("aria-expanded", String(!wrap.hidden));
+    } },
+  cite ? h("span", { class: "cite" }, String(cite.n)) : null,
+  h("span", { class: "h" }, c.heading),
+  cite ? h("span", { class: "chunk-tag" }, "Cited") : null,
+  !cite && scored ? h("span", { class: "score", title: "BM25 retrieval score" }, `BM25 ${scored.score.toFixed(2)}`) : null);
+  return h("div", { class: `chunk ${kind}`, "data-chunk": c.id }, head, wrap);
+}
+
+function findQuote(text, quote) {
+  let at = text.indexOf(quote);
+  if (at !== -1) return [at, at + quote.length];
+  at = text.toLowerCase().indexOf(quote.toLowerCase());
+  if (at !== -1) return [at, at + quote.length];
+  // Whitespace-insensitive fallback.
+  const pattern = quote.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+  const m = pattern && new RegExp(pattern, "i").exec(text);
+  return m ? [m.index, m.index + m[0].length] : null;
+}
+
+// Chunk text repeats its heading on the first line; the heading is already shown above it.
+function bodyOf(c) {
+  const t = c.text.trimStart();
+  return t.startsWith(c.heading) ? t.slice(c.heading.length).trimStart() || t : t;
+}
+
+function markQuotes(c, text, cite) {
+  const ranges = cite.quotes.map((q) => findQuote(text, q)).filter(Boolean).sort((a, b) => a[0] - b[0]);
+  const out = [];
+  let pos = 0;
+  for (const [s, e] of ranges) {
+    if (s < pos) continue;
+    out.push(text.slice(pos, s));
+    out.push(h("mark", { class: "q", "data-chunk": c.id, tabindex: "0" },
+      h("span", { class: "cite", "aria-hidden": "true" }, String(cite.n)), text.slice(s, e)));
+    pos = e;
+  }
+  out.push(text.slice(pos));
+  if (!ranges.length) out.push(h("span", { class: "chunk-id", style: "padding:6px 0 0;color:var(--amber-ink)" }, "Quote not found verbatim in this section."));
+  return out;
+}
+
+// ---------- Sentence <-> source linking ----------
+
+function wireSentences(card) {
+  card.addEventListener("mouseover", (e) => {
+    const s = e.target.closest(".sent-fact");
+    if (s) linkFromSentence(s, false);
+  });
+  card.addEventListener("mouseout", (e) => {
+    const s = e.target.closest(".sent-fact");
+    if (s && !s.contains(e.relatedTarget)) clearLinks();
+  });
+  card.addEventListener("focusin", (e) => {
+    const s = e.target.closest(".sent-fact");
+    if (s) linkFromSentence(s, true);
+  });
+  card.addEventListener("focusout", (e) => { if (e.target.closest(".sent-fact")) clearLinks(); });
+  card.addEventListener("click", (e) => {
+    const s = e.target.closest(".sent-fact");
+    if (s) linkFromSentence(s, true);
+  });
+  card.addEventListener("keydown", (e) => {
+    const s = e.target.closest(".sent-fact");
+    if (s && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); linkFromSentence(s, true); }
+  });
+}
+
+let lastLinked = null;
+function linkFromSentence(sent, reveal) {
+  const ids = (sent.dataset.chunks || "").split(" ").filter(Boolean);
+  if (lastLinked === sent && !reveal) return;
+  clearLinks();
+  lastLinked = sent;
+  document.body.classList.toggle("is-linking", ids.length > 0);
+  sent.classList.add("is-linked");
+  document.querySelectorAll(".sent-fact").forEach((x) => { if (x !== sent) x.classList.add("is-dim"); });
+  document.querySelectorAll(".sent-courtesy").forEach((x) => x.classList.add("is-dim"));
+  const chunks = ids.map((id) => document.querySelector(`.chunk[data-chunk="${CSS.escape(id)}"]`)).filter(Boolean);
+  const marks = ids.flatMap((id) => [...document.querySelectorAll(`mark.q[data-chunk="${CSS.escape(id)}"]`)]);
+  chunks.forEach((c) => {
+    c.classList.add("is-linked");
+    const page = c.closest(".page");
+    const body = page?.querySelector(".page-body");
+    if (body?.hidden) { body.hidden = false; page.querySelector(".page-toggle").setAttribute("aria-expanded", "true"); }
+  });
+  marks.forEach((m) => m.classList.add("is-linked"));
+  if (chunks[0]) revealChunk(chunks[0], reveal);
+  if (motion() && marks.length) {
+    window.gsap.fromTo(marks, { backgroundColor: "#ffd23f" }, { backgroundColor: "#ffe27a", duration: 0.45, ease: "power2.out", overwrite: true });
+  }
+}
+
+function linkFromChunk(id) {
+  clearLinks();
+  document.querySelectorAll(".sent").forEach((s) => {
+    const hit = (s.dataset.chunks || "").split(" ").includes(id);
+    s.classList.toggle("is-linked", hit);
+    s.classList.toggle("is-dim", !hit);
+  });
+  document.querySelectorAll(`mark.q[data-chunk="${CSS.escape(id)}"]`).forEach((m) => m.classList.add("is-linked"));
+}
+
+function clearLinks() {
+  lastLinked = null;
+  document.body.classList.remove("is-linking");
+  document.querySelectorAll(".is-linked, .is-dim").forEach((x) => x.classList.remove("is-linked", "is-dim"));
+}
+
+function revealChunk(chunk, force) {
+  const col = $(".col-sources");
+  if (wide.matches) {
+    const cr = col.getBoundingClientRect();
+    const r = chunk.getBoundingClientRect();
+    const pad = 16;
+    let delta = 0;
+    if (r.top < cr.top + pad) delta = r.top - cr.top - pad;
+    else if (r.bottom > cr.bottom - pad) delta = Math.min(r.bottom - cr.bottom + pad, r.top - cr.top - pad);
+    if (delta) col.scrollBy({ top: delta, behavior: motion() ? "smooth" : "auto" });
+  } else if (force) {
+    chunk.scrollIntoView({ block: "center", behavior: motion() ? "smooth" : "auto" });
+  }
+}
+
+function wireSourcesHover() {
+  const root = $("#sources");
+  const enter = (e) => {
+    const m = e.target.closest("mark.q");
+    if (m) linkFromChunk(m.dataset.chunk);
   };
-  const stop = () => {
-    if (state.recorder && state.recorder.state === "recording") state.recorder.stop();
+  const leave = (e) => {
+    const m = e.target.closest("mark.q");
+    if (m && !m.contains(e.relatedTarget)) clearLinks();
   };
-  mic.addEventListener("pointerdown", (e) => {
+  root.addEventListener("mouseover", enter);
+  root.addEventListener("mouseout", leave);
+  root.addEventListener("focusin", enter);
+  root.addEventListener("focusout", (e) => { if (e.target.closest("mark.q")) clearLinks(); });
+}
+
+// ---------- Motion ----------
+
+function animateIn(wrap) {
+  if (!motion()) return;
+  const gsap = window.gsap;
+  const cards = wrap.children;
+  const steps = wrap.querySelectorAll(".rail .step");
+  const fill = wrap.querySelector(".rail-fill");
+  const bars = wrap.querySelectorAll(".budget-bar span");
+  const badge = wrap.querySelector(".route-badge");
+  const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
+  tl.from(cards, { y: 10, autoAlpha: 0, duration: 0.32, stagger: 0.05, clearProps: "transform,opacity,visibility" }, 0);
+  if (fill) tl.fromTo(fill, { scaleX: 0 }, { scaleX: 1, duration: 0.42, ease: "power1.inOut" }, 0.08);
+  tl.from(steps, { autoAlpha: 0.25, duration: 0.18, stagger: 0.055, clearProps: "opacity,visibility" }, 0.08);
+  tl.from(wrap.querySelectorAll(".rail .node"), { scale: 0.7, duration: 0.22, stagger: 0.055, ease: "back.out(2)", clearProps: "transform" }, 0.08);
+  if (bars.length) tl.from(bars, { scaleX: 0, duration: 0.3, stagger: 0.03, clearProps: "transform" }, 0.2);
+  if (badge) tl.from(badge, { scale: 0.94, duration: 0.25, ease: "back.out(2)", clearProps: "transform" }, 0.3);
+}
+
+// ---------- Compose and voice ----------
+
+function wireCompose() {
+  const form = $("#compose");
+  const ta = $("#compose-text");
+  $("#run-kbd").textContent = isMac ? "⌘ ↵" : "Ctrl ↵";
+  form.addEventListener("submit", (e) => {
     e.preventDefault();
-    start();
-  });
-  mic.addEventListener("pointerup", stop);
-  mic.addEventListener("pointerleave", stop);
-  mic.addEventListener("pointercancel", stop);
-  mic.addEventListener("keydown", (e) => {
-    if ((e.key === " " || e.key === "Enter") && !e.repeat) {
-      e.preventDefault();
-      start();
-    }
-  });
-  mic.addEventListener("keyup", (e) => {
-    if (e.key === " " || e.key === "Enter") stop();
-  });
-  file.addEventListener("change", () => {
-    const f = file.files && file.files[0];
-    if (!f) return;
-    if (f.size > 10 * 1024 * 1024) {
-      note("Audio file is larger than 10 MB.", true);
-      file.value = "";
+    const text = ta.value.trim();
+    if (!text) {
+      composeMsg("Type or paste a ticket first.", true);
+      ta.focus();
       return;
     }
-    sendVoice(f, f.name);
-    file.value = "";
+    composeMsg("");
+    runTriage(text, null, { source: "Pasted", ticketText: text });
+  });
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); form.requestSubmit(); }
+  });
+
+  $("#upload-btn").addEventListener("click", () => $("#upload").click());
+  $("#upload").addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (f) sendVoice(f, f.name);
+  });
+
+  const mic = $("#mic");
+  mic.addEventListener("pointerdown", (e) => { e.preventDefault(); mic.setPointerCapture?.(e.pointerId); startRec(); });
+  mic.addEventListener("pointerup", stopRec);
+  mic.addEventListener("pointercancel", stopRec);
+  mic.addEventListener("keydown", (e) => {
+    if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); startRec(); }
+  });
+  mic.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); stopRec(); } });
+}
+
+function composeMsg(text, error = false) {
+  const p = $("#compose-msg");
+  p.textContent = text;
+  p.classList.toggle("is-error", error);
+}
+
+const rec = { recorder: null, chunks: [], started: 0, stream: null, pending: false };
+
+async function startRec() {
+  if (rec.recorder || rec.pending) return;
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    composeMsg("This browser cannot record audio. Use Upload audio instead.", true);
+    return;
+  }
+  rec.pending = true;
+  try {
+    rec.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    rec.pending = false;
+    composeMsg("Microphone access was blocked.", true);
+    return;
+  }
+  if (!rec.pending) { rec.stream.getTracks().forEach((t) => t.stop()); return; } // released before access
+  rec.pending = false;
+  const type = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+  rec.recorder = new MediaRecorder(rec.stream, type ? { mimeType: type } : undefined);
+  rec.chunks = [];
+  rec.recorder.ondataavailable = (e) => { if (e.data.size) rec.chunks.push(e.data); };
+  rec.recorder.onstop = () => {
+    rec.stream.getTracks().forEach((t) => t.stop());
+    const ms = performance.now() - rec.started;
+    const blob = new Blob(rec.chunks, { type: "audio/webm" });
+    rec.recorder = null;
+    if (ms < 500 || !blob.size) {
+      composeMsg("Too short. Hold the button while you speak.", true);
+      return;
+    }
+    sendVoice(blob, "recording.webm");
+  };
+  rec.started = performance.now();
+  rec.recorder.start();
+  const mic = $("#mic");
+  mic.classList.add("is-recording");
+  mic.setAttribute("aria-pressed", "true");
+  $(".mic-label", mic).textContent = "Recording… release to send";
+  composeMsg("");
+}
+
+function stopRec() {
+  rec.pending = false;
+  const mic = $("#mic");
+  mic.classList.remove("is-recording");
+  mic.setAttribute("aria-pressed", "false");
+  $(".mic-label", mic).textContent = "Hold to record";
+  if (rec.recorder?.state === "recording") rec.recorder.stop();
+}
+
+async function sendVoice(blob, name) {
+  const seq = ++runSeq;
+  state.current = { meta: { source: "Voice" }, result: null };
+  markCurrentRow();
+  showLoading("", { source: "Voice" }, "Transcribing audio…");
+  const fd = new FormData();
+  fd.append("audio", blob, name);
+  try {
+    const res = await api("/api/voice", { method: "POST", body: fd });
+    const data = await res.json();
+    if (seq !== runSeq) return;
+    const text = data.transcript.text;
+    showResult(data.result, { source: "Voice", ticketText: text, language: data.transcript.language }, data.transcript);
+  } catch (err) {
+    if (seq !== runSeq) return;
+    showError("The audio could not be processed.", err.message);
+  }
+}
+
+// ---------- Boot ----------
+
+async function refreshStats() {
+  try { state.stats = await getJson("/api/feedback/stats"); } catch { /* keep old */ }
+  renderStatus();
+}
+
+function wireInboxKeys() {
+  $("#inbox").addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const all = [...document.querySelectorAll(".tk")];
+    const i = all.indexOf(document.activeElement);
+    if (i === -1) return;
+    e.preventDefault();
+    all[Math.max(0, Math.min(all.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))].focus();
   });
 }
 
-/* ---------- Boot ---------- */
-
 async function boot() {
-  renderEmpty();
-  setupVoice();
-  $("#compose").addEventListener("submit", (e) => {
-    e.preventDefault();
-    state.activeId = null;
-    markActive();
-    runTriage($("#ticket-text").value);
-  });
-  $("#ticket-text").addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      $("#compose").requestSubmit();
-    }
-  });
-  if (window.innerWidth <= 900) $("#samples-wrap").open = false;
-
-  const [health, samples, kb] = await Promise.allSettled([
-    api("/api/health").then((r) => r.json()),
-    api("/api/samples").then((r) => r.json()),
-    api("/api/kb").then((r) => r.json()),
+  wireCompose();
+  wireInboxKeys();
+  wireSourcesHover();
+  $("#filter").addEventListener("input", renderInbox);
+  const [health, samples, kb, stats] = await Promise.allSettled([
+    getJson("/api/health"), getJson("/api/samples"), getJson("/api/kb"), getJson("/api/feedback/stats"),
   ]);
-  if (health.status === "fulfilled") state.health = health.value;
-  else $("#status").append(h("span", { class: "pill off" }, h("span", { class: "dot" }), "API unreachable"));
-  if (samples.status === "fulfilled") state.samples = samples.value;
-  else $("#samples").append(h("p", { class: "sources-note", text: `Samples unavailable: ${samples.reason.message}` }));
+  state.health = health.status === "fulfilled" ? health.value : null;
+  state.samples = samples.status === "fulfilled" ? samples.value : [];
   if (kb.status === "fulfilled") state.kb = kb.value;
-  else $("#kb").append(h("p", { class: "sources-note", text: `KB unavailable: ${kb.reason.message}` }));
+  for (const p of state.kb.pages) for (const c of p.chunks) state.chunks.set(c.id, c);
+  state.stats = stats.status === "fulfilled" ? stats.value : null;
   renderStatus();
-  renderSamples();
-  renderKb();
+  renderInbox();
+  if (samples.status === "rejected") $("#inbox").replaceChildren(h("p", { class: "muted pad" }, `Could not load tickets: ${samples.reason.message}`));
+  if (kb.status === "rejected") $("#sources").replaceChildren(h("p", { class: "muted pad" }, `Could not load the knowledge base: ${kb.reason.message}`));
+  else renderSources(null);
+  const deep = new URLSearchParams(location.search).get("ticket");
+  const s = deep && state.samples.find((x) => x.id === deep);
+  if (s) openSample(s);
 }
 
 boot();
