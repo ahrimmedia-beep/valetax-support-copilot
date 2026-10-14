@@ -3,10 +3,23 @@ and code checks each sentence against its own sources, not against the whole rep
 
 from __future__ import annotations
 
+import re
+
+import pytest
+
+from copilot import guardrails
 from copilot.draft import make_draft
 from copilot.llm import FakeProvider
-from copilot.models import Chunk, Draft, LLMCitation, LLMDraft, LLMSentence, ScoredChunk
-from copilot.templates import holding_reply
+from copilot.models import (
+    Chunk,
+    Draft,
+    LLMCitation,
+    LLMDraft,
+    LLMSentence,
+    ScoredChunk,
+    SentenceKind,
+)
+from copilot.templates import HOLDING_REPLY, holding_reply
 
 SKRILL = "Withdrawals to Skrill are processed within 24 hours of the request."
 CARD = "Bank card withdrawals are free of any fee charged by us."
@@ -144,6 +157,72 @@ def test_short_handoff_is_fine() -> None:
     draft = _run([fact(SKRILL, 0), LLMSentence(text=text, kind="handoff", cites=[])])
     assert not draft.abstained
     assert [s.kind for s in draft.sentences] == ["fact", "handoff"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "text"),
+    [
+        ("handoff", "A colleague will get back to you within two business days."),
+        ("greeting", "Good news, deposits are credited instantly and free of charge."),
+        ("closing", "Withdrawals by card are free of charge and arrive the same day."),
+    ],
+)
+def test_timeline_or_price_in_a_courtesy_sentence_is_a_disguised_fact(
+    kind: SentenceKind, text: str
+) -> None:
+    """No digits, no specific terms, short: only the courtesy word list catches these."""
+    draft = _run([fact(SKRILL, 0), LLMSentence(text=text, kind=kind, cites=[])])
+    assert draft.abstained and draft.problems == [f"fact_disguised_as_{kind}: {text}"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Коллега ответит вам в течение двух рабочих дней.",
+        "Пополнение бесплатно и мгновенно.",
+        "Buenas noticias: los depósitos son gratis.",
+        "Su retiro llegará mañana.",
+        "Penarikan Anda diproses hari ini.",
+        "Penarikan Anda akan diproses segera.",
+        "سيتم الرد عليك خلال يومين.",
+        "الإيداع مجاني.",
+        "अच्छी खबर, जमा तुरंत होता है।",
+        "पैसा कल आएगा।",
+    ],
+)
+def test_courtesy_word_list_is_multilingual(text: str) -> None:
+    draft = _run([fact(SKRILL, 0), LLMSentence(text=text, kind="handoff", cites=[])])
+    assert draft.abstained and draft.problems == [f"fact_disguised_as_handoff: {text}"]
+
+
+def _sentences(text: str) -> list[str]:
+    return [x for x in re.split(r"(?<=[.。।])\s+", text.strip()) if x]
+
+
+HANDOFFS = [
+    *(x for reply in HOLDING_REPLY.values() for x in _sentences(reply)),
+    "A colleague will follow up on your other question.",
+    "One of our colleagues will follow up on the rest of your message.",
+    "Feel free to contact us if you have any other questions.",
+]
+
+
+@pytest.mark.parametrize("text", HANDOFFS)
+def test_template_and_plain_handoffs_still_pass(text: str) -> None:
+    assert guardrails.courtesy_violations(text) == []
+    draft = _run([fact(SKRILL, 0), LLMSentence(text=text, kind="handoff", cites=[])])
+    assert not draft.abstained, draft.problems
+
+
+def test_courtesy_without_spaces_is_capped_by_characters() -> None:
+    """The word cap is a no-op for scripts without spaces (Thai, Chinese)."""
+    long_text = "ขอบคุณ" * 34  # 204 characters, one "word"
+    draft = _run([fact(SKRILL, 0), LLMSentence(text=long_text, kind="closing", cites=[])])
+    assert draft.abstained and draft.problems == [f"fact_disguised_as_closing: {long_text}"]
+    ok_text = "ขอบคุณ" * 33  # 198 characters
+    assert not _run(
+        [fact(SKRILL, 0), LLMSentence(text=ok_text, kind="closing", cites=[])]
+    ).abstained
 
 
 def test_covered_without_sentences_is_not_covered() -> None:

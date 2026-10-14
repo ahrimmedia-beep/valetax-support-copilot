@@ -20,9 +20,18 @@ each sentence is checked against its own sources:
   8. every number and specific term in a `fact` sentence must appear in the chunks that
      sentence cites or in the ticket - not merely somewhere in the reply's sources
      (`sentence_number_not_in_its_source`, `sentence_term_not_in_its_source`);
-  9. a greeting, closing or handoff carries no numbers, no specific terms and at most
-     MAX_COURTESY_WORDS words, so facts cannot hide in sentences that need no source
-     (`fact_disguised_as_<kind>`).
+  9. a greeting, closing or handoff carries no numbers, no specific terms, no timeline,
+     price or promise words (guardrails.courtesy_violations), at most MAX_COURTESY_WORDS
+     words and MAX_COURTESY_CHARS characters (for scripts without spaces), so facts cannot
+     hide in sentences that need no source (`fact_disguised_as_<kind>`).
+
+Known limits:
+  * a fact that cites a real quote from an unrelated chunk is accepted if its numbers and
+    terms are grounded. There is no lexical-overlap check between sentence and quote,
+    because replies are multilingual and quotes are English. The backstop is the agent, who
+    sees the quote next to each sentence, and the eval;
+  * numbers and terms that appear in the ticket count as grounded: if the customer writes
+    "1 hour", a sentence repeating "1 hour" passes.
 
 If the ticket names something the cited chunks never mention, the draft is kept but marked
 `partial` (a person must answer that part).
@@ -53,6 +62,7 @@ from copilot.templates import holding_reply
 
 MIN_QUOTE_CHARS = 15
 MAX_COURTESY_WORDS = 30
+MAX_COURTESY_CHARS = 200
 
 
 def normalize(text: str) -> str:
@@ -145,8 +155,13 @@ def check_sentences(
         problems += cite_problems
         if s.kind != "fact":
             chunk_ids = []
-            too_long = len(text.split()) > MAX_COURTESY_WORDS
-            if numbers_in(text) or guardrails.specific_terms(text) or too_long:
+            too_long = len(text.split()) > MAX_COURTESY_WORDS or len(text) > MAX_COURTESY_CHARS
+            if (
+                numbers_in(text)
+                or guardrails.specific_terms(text)
+                or guardrails.courtesy_violations(text)
+                or too_long
+            ):
                 problems.append(f"fact_disguised_as_{s.kind}: {text}")
         elif not chunk_ids:
             problems.append(f"uncited_fact: {text}")

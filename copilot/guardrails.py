@@ -285,6 +285,42 @@ def specific_terms(text: str) -> set[str]:
     return {name for name, p in SPECIFIC_TERMS.items() if p.search(text)}
 
 
+# --- Courtesy sentences -----------------------------------------------------------------
+# A greeting, closing or handoff needs no source, so it must not carry a fact: no timeline
+# ("within two days", "instantly"), no price ("free of charge") and no promise. Kept apart
+# from SPECIFIC_TERMS so the ticket-side `partial` logic does not change. Over-matching only
+# turns a draft into a holding reply (fails closed); the fixed texts in templates.py must pass.
+
+_HI_EDGE_L = r"(?:^|(?<=[\s,.।]))"  # Devanagari vowel signs break \b, so use whitespace edges
+_HI_EDGE_R = r"(?=$|[\s,.।])"
+
+COURTESY_FORBIDDEN = _rx(
+    # English
+    r"\bwithin\b|\binstant\w*|\bimmediately\b|\btoday\b|\btomorrow\b|\bsame[- ]day\b",
+    r"\b(minutes?|hours?|days?|weeks?|months?)\b",
+    r"(?<!feel )\bfree\b|\bno (charges?|costs?|fees?)\b|\bguarantee\w*",
+    r"\b(one(?!\s+of\b)|two|three|four|five|six|seven|eight|nine|ten)\b",
+    # Russian
+    r"мгновенн|\bсразу\b|сегодня|завтра|в течение|\bчас(а|ов)?\b|\b(день|дня|дней)\b|рабоч"
+    r"|\bминут|\bнедел|\bмесяц|бесплатн|без комисси|гарантир",
+    # Spanish
+    r"\binmediat\w*|\bhoy\b|\bmañana\b|\bdentro de\b|\bhoras?\b|\bd[ií]as?\b|\bminutos?\b"
+    r"|\bsemanas?\b|\bgratis\b|\bsin (comisi[oó]n|costo|cargo)\b|\bgaranti\w*",
+    # Indonesian
+    r"\bsegera\b|\bhari ini\b|\bbesok\b|\bdalam waktu\b|\bjam\b|\bhari\b|\bmenit\b"
+    r"|\bminggu\b|\bgratis\b|\btanpa biaya\b|\bdijamin\b",
+    # Arabic
+    r"فور[اًا]|فوري|اليوم|غد[اًا]?\b|خلال|ساع[ةات]|يوم|أيام|مجان|نضمن|مضمون",
+    # Hindi
+    r"तुरंत|मुफ्त|मुफ़्त|गारंटी|" + _HI_EDGE_L + r"(आज|कल|घंटे|घंटों|दिन|दिनों)" + _HI_EDGE_R,
+)
+
+
+def courtesy_violations(text: str) -> list[str]:
+    """Timeline, price or promise words found in a sentence that claims to be a courtesy."""
+    return _matches(COURTESY_FORBIDDEN, text)
+
+
 # --- Output checks on LLM-written text ----------------------------------------------------
 
 ADVICE_IN_REPLY = _rx(
