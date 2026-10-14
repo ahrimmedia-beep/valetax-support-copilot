@@ -1,0 +1,14 @@
+.venv
+.env
+.env.*
+tests
+docs
+eval/audio
+eval/runs
+eval/real
+eval/results.jsonl
+kb/raw
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache

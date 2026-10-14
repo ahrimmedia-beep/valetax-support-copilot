@@ -14,6 +14,8 @@ pages (deposit, withdraw, open an account, verify account), used as they are.
 
 ![Operator console: auto-draft with every fact linked to its source](docs/screenshots/console-auto-draft.png)
 
+**Live demo:** https://valetax-support-copilot.vercel.app (the model-backed actions need an access token; ask me for it).
+
 **Read next:** [PRD](docs/prd.md) · [Architecture and stack](docs/architecture.md) ·
 [Business case](docs/business-case.md) · [Phase 2](docs/phase-2.md) ·
 [Design decisions](docs/decisions.md) · [KB audit](docs/kb-audit.md) ·
