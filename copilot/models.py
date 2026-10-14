@@ -95,9 +95,21 @@ class Citation(BaseModel):
     quote: str
 
 
+SentenceKind = Literal["fact", "greeting", "closing", "handoff"]
+
+
+class DraftSentence(BaseModel):
+    """One sentence of an accepted draft and the citations that back it (for the agent UI)."""
+
+    text: str
+    kind: SentenceKind
+    chunk_ids: list[str] = Field(default_factory=list)
+
+
 class Draft(BaseModel):
     reply: str
     citations: list[Citation] = Field(default_factory=list)
+    sentences: list[DraftSentence] = Field(default_factory=list)
     abstained: bool = False
     coverage: Literal["full", "partial", "none", "not_applicable"] = "not_applicable"
     problems: list[str] = Field(default_factory=list)  # why a draft was rejected, if it was
@@ -126,6 +138,14 @@ class Usage(BaseModel):
         self.llm_latency_ms += other.llm_latency_ms
 
 
+class TraceStep(BaseModel):
+    """One pipeline step as the agent UI shows it: what ran, how long, what it found."""
+
+    step: Literal["guardrails", "redaction", "classify", "retrieve", "draft", "verify", "route"]
+    ms: float
+    detail: str
+
+
 class TriageResult(BaseModel):
     """Everything an agent (and an auditor) needs to see for one ticket."""
 
@@ -142,3 +162,4 @@ class TriageResult(BaseModel):
     prompt_version: str
     kb_version: str
     errors: list[str] = Field(default_factory=list)
+    trace: list[TraceStep] = Field(default_factory=list)
