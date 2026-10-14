@@ -175,14 +175,14 @@ noscript .card{margin-top:18px}
       <div class="cfgwrap">
       <table class="cfg" id="cfg">
         <tr><th>Config</th><th class="r">LLM $/ticket</th><th class="r">$/month @10k</th><th>Quality on the eval (51 tickets, 2 runs) <span class="tag m">measured</span></th><th>Verdict</th></tr>
-        <tr data-m="gpt-4.1-nano" class="rej"><td>A. gpt-4.1-nano</td><td class="r">$0.0002</td><td class="r">$2</td><td>Routing 82%. Read "maximum leverage" as advice; 7 of 10 plain declines went to humans.</td><td>Rejected</td></tr>
-        <tr data-m="gpt-4.1-mini"><td>B. gpt-4.1-mini</td><td class="r">$0.0008</td><td class="r">$8</td><td>0 violations, routing 96% in both runs. Writes partial drafts where gpt-4.1 abstains cleanly (strict abstain recall ~70%).</td><td>Fallback</td></tr>
-        <tr data-m="gpt-4.1"><td><strong>C. gpt-4.1</strong></td><td class="r"><strong>$0.0037</strong></td><td class="r"><strong>$37</strong></td><td>0 violations, routing 96% in both runs, strict abstain recall 100%, p95 2.9 s.</td><td><strong>Recommended</strong></td></tr>
-        <tr><td>D. mini, escalate to gpt-4.1</td><td class="r">~$0.0017 <span class="tag c">estimate</span></td><td class="r">~$17</td><td>Not built. All 14 uncovered tickets were uncovered for every model: abstains come from KB gaps.</td><td>Not worth the complexity</td></tr>
+        <tr data-m="gpt-4.1-nano" class="rej"><td>A. gpt-4.1-nano</td><td class="r">$0.0002</td><td class="r">$2</td><td>Routing 82% (first prompt version, not re-run). Read "maximum leverage" as advice; 7 of 10 plain declines went to humans.</td><td>Rejected</td></tr>
+        <tr data-m="gpt-4.1-mini"><td>B. gpt-4.1-mini</td><td class="r">$0.00095</td><td class="r">$10</td><td>0 violations, routing 96%, citations 100%, strict abstain recall 93%, p95 3.0 s.</td><td>Fallback</td></tr>
+        <tr data-m="gpt-4.1"><td><strong>C. gpt-4.1</strong></td><td class="r"><strong>$0.0044</strong></td><td class="r"><strong>$44</strong></td><td>0 violations, routing 96%, citations 100%, strict abstain recall 100%, p95 3.0 s. Real-theme set (20 tickets, 8 languages): 0 violations, routing 100%.</td><td><strong>Recommended</strong></td></tr>
+        <tr><td>D. mini, escalate to gpt-4.1</td><td class="r">~$0.002 <span class="tag c">estimate</span></td><td class="r">~$20</td><td>Not built. All 14 uncovered tickets were uncovered for every model: abstains come from KB gaps.</td><td>Not worth the complexity</td></tr>
         <tr><td>E. Phase 2 (embeddings, reranker, queue, audit store)</td><td class="r">~$0.006 <span class="tag c">estimate</span></td><td class="r">~$60 + ~$300 infra</td><td>Needed when the KB grows past tens of pages; no benefit on 4 pages.</td><td>Later</td></tr>
       </table>
       </div>
-      <p class="note"><strong>Recommended: gpt-4.1 for both LLM steps, gpt-4.1-mini as automatic fallback, nothing auto-sent.</strong> The LLM bill is about 1% of the savings, so choose the model on quality. B and C tie on routing and safety; C wins on abstention and latency for $29/month.</p>
+      <p class="note"><strong>Recommended: gpt-4.1 for both LLM steps, gpt-4.1-mini as automatic fallback, nothing auto-sent.</strong> The LLM bill is about 1% of the savings, so choose the model on quality. B and C tie on routing and safety; C wins on abstention discipline and latency for $34/month.</p>
     </section>
 
     <div class="two">
@@ -194,8 +194,8 @@ noscript .card{margin-top:18px}
       <section class="card">
         <h2>Measured vs assumed</h2>
         <p class="note" style="margin-top:0"><span class="tag m">measured</span> LLM cost per ticket, routing and safety results (51 labelled tickets, <code>eval/summary.json</code>).</p>
-        <p class="note"><span class="tag a">assumption</span> volumes, handle times, route mix, agent cost, running and rollout cost. The eval set is deliberately adversarial (27% auto_draft), so its mix is not used for the production mix.</p>
-        <p class="note"><span class="tag c">context</span> Share in KB categories is shown for context only; the model does not use it.</p>
+        <p class="note"><span class="tag a">assumption</span> volumes, handle times, route mix, agent cost, running and rollout cost. The eval set is deliberately adversarial (31% auto_draft), so its mix is not used for the production mix.</p>
+        <p class="note"><span class="tag a">assumption</span> The route mix applies to all tickets: tickets outside the four KB topics mostly land in human_review, which still saves the triage minute.</p>
       </section>
     </div>
   </div>
@@ -206,7 +206,6 @@ noscript .card{margin-top:18px}
 // eval/summary.json (measured LLM cost per ticket). Change numbers here only.
 const INPUTS = {
   tickets: 10000,          // brief
-  kbShare: 60,             // % in the 4 KB categories; context only, not in the formula
   handleMin: 6,            // minutes per ticket today
   autoPct: 40,             // % auto_draft
   declinePct: 5,           // % decline_trading_advice (human_review = the rest)
@@ -220,9 +219,9 @@ const INPUTS = {
   fteHours: 160,           // hours per FTE-month
   rates: [8, 20],          // the two scenarios in the doc
 };
-const MODELS = {            // measured, eval/summary.json (gpt-4.1: $0.00371)
-  'gpt-4.1': 0.0037,
-  'gpt-4.1-mini': 0.0008,
+const MODELS = {            // measured on the 51-ticket eval, prompt v2: eval/summary.json, eval/runs/v2-gpt-4.1-mini/
+  'gpt-4.1': 0.0044,
+  'gpt-4.1-mini': 0.00095,
   'gpt-4.1-nano': 0.0002,
 };
 
@@ -269,7 +268,6 @@ if (typeof document !== 'undefined') (function () {
   const num = (x) => Math.round(x).toLocaleString('en-US');
   const FIELDS = [
     { k: 'tickets', t: 'Tickets per month', min: 1000, max: 50000, step: 500, u: '', tag: 'a' },
-    { k: 'kbShare', t: 'Share in KB categories', min: 0, max: 100, step: 5, u: '%', tag: 'c' },
     { k: 'handleMin', t: 'Handle time today', min: 1, max: 20, step: 0.5, u: 'min', tag: 'a' },
     { k: 'autoPct', t: 'auto_draft share', min: 0, max: 95, step: 1, u: '%', tag: 'a' },
     { k: 'declinePct', t: 'decline share', min: 0, max: 30, step: 1, u: '%', tag: 'a' },
