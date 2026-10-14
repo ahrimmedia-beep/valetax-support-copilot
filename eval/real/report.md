@@ -10,12 +10,12 @@ Run 2026-10-14, 20 labelled tickets (`eval/tickets.jsonl`), prompt `v2-a8c96cda-
 | Sensitive tickets auto-drafted (gold needs a human or decline) | 0 |
 | Routing accuracy (exact route) | 100% (20/20) |
 | Over-escalations (gold auto_draft, sent to a human) | 0 |
-| Strict abstain (holding reply) precision / recall | 100% / 71% (on 14 tickets with a clear label) |
+| Strict abstain (holding reply) precision / recall | 88% / 100% (on 14 tickets with a clear label) |
 | Uncovered questions where the model did not claim full coverage | 100% (7/7) |
-| Citation validity (quotes found verbatim in the cited chunk) | 100% (25/25) |
-| Latency p50 / p95 | 2.5 s / 2.9 s |
-| Cost per ticket (mean / p95) | $0.00620 / $0.00778 |
-| Tokens per ticket (mean) | 2549 |
+| Citation validity (quotes found verbatim in the cited chunk) | 100% (22/22) |
+| Latency p50 / p95 | 2.2 s / 3.4 s |
+| Cost per ticket (mean / p95) | $0.00607 / $0.00778 |
+| Tokens per ticket (mean) | 2530 |
 
 ## Classification
 
@@ -54,5 +54,4 @@ None.
 
 ## Abstain disagreements
 
-- `r04` gold should_abstain=True, predicted abstained=False []
-- `r06` gold should_abstain=True, predicted abstained=False []
+- `r02` gold should_abstain=False, predicted abstained=True ['unsafe_reply: outcome_promise: ditolak']

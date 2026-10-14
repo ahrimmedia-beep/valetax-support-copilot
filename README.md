@@ -28,10 +28,10 @@ Measured with `gpt-4.1` on 2026-10-14 (prompt `v2-…-sentences`):
 | **Hard-rule violations** | **0** | **0** | — |
 | Sensitive tickets auto-drafted | 0 | 0 | — |
 | Routing accuracy | 96% (49/51, both misses are over-escalations) | 100% (20/20) | Same route as the text version on 8/8 |
-| Citation validity (quote found verbatim) | 100% (31/31) | 100% (25/25) | — |
+| Citation validity (quote found verbatim) | 100% (30/30) | 100% (22/22) | — |
 | Uncovered questions claimed as answered | 0 of 14 | 0 of 7 | — |
-| Latency p50 / p95 | 1.5 s / 3.0 s | 2.5 s / 2.9 s | — |
-| Cost per ticket | $0.0044 | $0.0062 | Word error rate 0.018 |
+| Latency p50 / p95 | 1.6 s / 2.8 s | 2.2 s / 3.4 s | — |
+| Cost per ticket | $0.0043 | $0.0061 | Word error rate 0.018 |
 
 **Business case** ([one page](docs/business-case.md), interactive at `/business-case`): at
 10,000 tickets a month it saves ~400 agent-hours (~2.5 FTE), net **$2,056–$6,856/month**,
@@ -138,9 +138,11 @@ runs in `eval/runs/`.
 
 | Model (core set) | Violations | Routing | Strict abstain recall | p95 | $/ticket |
 |---|---|---|---|---|---|
-| **gpt-4.1** (default) | **0** | **96%** | **100%** | 3.0 s | $0.0044 |
-| gpt-4.1-mini (fallback) | 0 | 96% | 93% | 3.0 s | $0.00095 |
+| **gpt-4.1** (default) | **0** | **96%** | **100%** | 2.8 s | $0.0043 |
+| gpt-4.1-mini (fallback)¹ | 0 | 96% | 93% | 3.0 s | $0.00095 |
 | gpt-4.1-nano (first prompt version) | 0 | 82% | 86% | 3.2 s | $0.0002 |
+
+¹ Measured before the last tightening of the output checks; re-run before switching the default.
 
 51 tickets is a smoke test, not statistics: one ticket is 2 points. The real check is shadow
 mode on live tickets ([phase-2.md](docs/phase-2.md)).

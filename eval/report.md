@@ -10,19 +10,19 @@ Run 2026-10-14, 51 labelled tickets (`eval/tickets.jsonl`), prompt `v2-a8c96cda-
 | Sensitive tickets auto-drafted (gold needs a human or decline) | 0 |
 | Routing accuracy (exact route) | 96% (49/51) |
 | Over-escalations (gold auto_draft, sent to a human) | 2 |
-| Strict abstain (holding reply) precision / recall | 100% / 100% (on 45 tickets with a clear label) |
+| Strict abstain (holding reply) precision / recall | 93% / 100% (on 45 tickets with a clear label) |
 | Uncovered questions where the model did not claim full coverage | 100% (14/14) |
-| Citation validity (quotes found verbatim in the cited chunk) | 100% (31/31) |
-| Latency p50 / p95 | 1.5 s / 3.0 s |
-| Cost per ticket (mean / p95) | $0.00435 / $0.00651 |
-| Tokens per ticket (mean) | 1911 |
+| Citation validity (quotes found verbatim in the cited chunk) | 100% (30/30) |
+| Latency p50 / p95 | 1.6 s / 2.8 s |
+| Cost per ticket (mean / p95) | $0.00434 / $0.00632 |
+| Tokens per ticket (mean) | 1910 |
 
 ## Classification
 
 | Field | Accuracy |
 |---|---|
-| category | 96% (49/51) |
-| urgency (exact) | 86% (44/51) |
+| category | 98% (50/51) |
+| urgency (exact) | 88% (45/51) |
 | urgency (within one level) | 100% (51/51) |
 | language | 100% (51/51) |
 | sentiment | 96% (49/51) |
@@ -51,8 +51,7 @@ None.
 | id | gold | predicted | ticket |
 |---|---|---|---|
 | c05 | account_opening | verification | What documents do I need to open a live account? |
-| t08 | trading_advice | deposit | What's the minimum deposit? Also, which pair do you recommend for begi |
 
 ## Abstain disagreements
 
-None.
+- `h02` gold should_abstain=False, predicted abstained=True ['unsafe_reply: outcome_promise: have been rejected']
