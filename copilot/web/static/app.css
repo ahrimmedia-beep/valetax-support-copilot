@@ -87,7 +87,7 @@ a { color: var(--blue-ink); }
   top: 0;
   z-index: 20;
 }
-.brand { display: flex; align-items: baseline; gap: 10px; color: #fff; text-decoration: none; }
+.brand { display: flex; align-items: baseline; gap: 10px; color: #fff; text-decoration: none; white-space: nowrap; flex: none; }
 .wordmark {
   font-family: var(--font-head);
   font-weight: 800;
@@ -96,25 +96,45 @@ a { color: var(--blue-ink); }
   color: var(--green);
 }
 .product { font-weight: 500; font-size: 13.5px; color: rgba(255, 255, 255, 0.82); }
-.status { display: flex; gap: 6px; flex-wrap: wrap; margin-left: 8px; }
+.status { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Status pills stay quiet so the business-case button reads as the one action in the bar. */
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 2px 9px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
   font-size: 12px;
   white-space: nowrap;
+  cursor: help;
 }
-.pill b { font-weight: 500; color: #fff; }
+.pill b { font-weight: 500; color: rgba(255, 255, 255, 0.82); }
+.biz-btn {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  padding: 6px 14px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: var(--r-ctl);
+  color: #fff; text-decoration: none; font-weight: 600; font-size: 13px; line-height: 1.2; white-space: nowrap;
+  transition: border-color .15s, color .15s;
+}
+.biz-btn svg { width: 15px; height: 15px; flex: none; }
+.biz-btn:hover, .biz-btn:focus-visible { border-color: var(--green); color: var(--green); }
 .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 .pill.off .dot { background: var(--amber); }
-.topnav { margin-left: auto; }
-.topnav a { color: rgba(255, 255, 255, 0.85); text-decoration: none; font-weight: 500; font-size: 13px; }
-.topnav a:hover { color: #fff; text-decoration: underline; }
+.topnav { margin-left: auto; display: flex; align-items: center; }
+/* EN | RU switch: same shape as on the business-case page, inverted for the dark bar. */
+.lang-switch {
+  display: inline-flex; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: var(--r-ctl); overflow: hidden;
+}
+.lang-switch button {
+  border: 0; background: transparent; padding: 3px 10px; cursor: pointer;
+  font: 600 12px/1.4 var(--font-ui); color: rgba(255, 255, 255, 0.75);
+}
+.lang-switch button + button { border-left: 1px solid rgba(255, 255, 255, 0.22); }
+.lang-switch button:hover { color: #fff; }
+.lang-switch button[aria-pressed="true"] { background: #fff; color: var(--navy); }
+.lang-switch button:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; border-radius: 0; }
 
 /* ---------- Shell ---------- */
 .shell {
@@ -184,7 +204,7 @@ a { color: var(--blue-ink); }
 
 .compose {
   border-top: 1px solid var(--line); padding: 12px; background: var(--card);
-  display: grid; gap: 8px;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px;
 }
 .compose-label { font-size: 12px; font-weight: 600; color: var(--grey-1); }
 .compose textarea {
@@ -195,7 +215,8 @@ a { color: var(--blue-ink); }
 .compose textarea:focus { background: #fff; border-color: var(--green); outline: none; box-shadow: 0 0 0 3px var(--green-pale); }
 .compose-row { display: flex; gap: 8px; }
 .compose-row .btn-primary { flex: 1; justify-content: center; }
-.voice-row .btn { flex: 1; justify-content: center; }
+.voice-row { flex-wrap: wrap; }
+.voice-row .btn { flex: 1 1 auto; justify-content: center; }
 .compose-msg { margin: 0; font-size: 12px; color: var(--grey-2); min-height: 0; }
 .compose-msg:empty { display: none; }
 .compose-msg.is-error { color: var(--red-ink); }
@@ -356,6 +377,7 @@ a { color: var(--blue-ink); }
 .r-decline { box-shadow: inset 4px 0 0 var(--blue), var(--shadow); }
 .reasons { list-style: none; margin: 0; padding: 14px 18px; display: grid; gap: 8px; align-content: start; }
 .reason { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: 13.5px; }
+html[lang="ru"] .reason { grid-template-columns: 84px minmax(0, 1fr); }
 .sev {
   font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
   border-radius: 5px; padding: 3px 0; text-align: center;
@@ -509,6 +531,10 @@ mark.q .cite { vertical-align: 1px; margin-inline-end: 4px; }
   .shell { grid-template-columns: 272px minmax(0, 1fr) 340px; }
   .col-work { padding: 16px 16px 32px; }
 }
+/* Medium widths: one-line bar; prompt and speech versions remain in the audit footer. */
+@media (min-width: 900px) and (max-width: 1140px) {
+  .status .pill:nth-child(n+3) { display: none; }
+}
 @media (max-width: 1100px) {
   .step-detail { -webkit-line-clamp: 2; }
 }
@@ -541,6 +567,7 @@ mark.q .cite { vertical-align: 1px; margin-inline-end: 4px; }
   .step-state { grid-column: 3; grid-row: 2; justify-self: end; }
   .step-detail { grid-column: 2 / 4; -webkit-line-clamp: 2; }
   .reason { grid-template-columns: 64px minmax(0, 1fr); }
+  html[lang="ru"] .reason { grid-template-columns: 80px minmax(0, 1fr); }
   .legend { margin-left: 0; width: 100%; }
   .actions .btn { flex: 1 1 calc(50% - 4px); justify-content: center; }
   .actions .spacer { display: none; }

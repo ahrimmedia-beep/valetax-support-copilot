@@ -14,48 +14,54 @@
   <script src="/static/app.js" type="module"></script>
 </head>
 <body>
-  <a class="skip" href="#workspace">Skip to ticket</a>
+  <a class="skip" href="#workspace" data-i18n="skip">Skip to ticket</a>
 
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Valetax Support Co-pilot">
+    <a class="brand" href="/" aria-label="Valetax Support Co-pilot" data-i18n-aria="brandAria">
       <span class="wordmark">valetax</span>
-      <span class="product">Support Co-pilot</span>
+      <span class="product" data-i18n="product">Support Co-pilot</span>
+    </a>
+    <a class="biz-btn" href="/business-case?lang=en" id="biz-link">
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2.5 13.5h11M4.5 11V8M8 11V4.5M11.5 11V6.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span data-i18n="bizCase">Business case</span>
     </a>
     <div class="status" id="status" aria-live="polite"></div>
-    <nav class="topnav">
-      <a href="/business-case">Business case</a>
-    </nav>
+    <div class="topnav">
+      <div class="lang-switch" role="group" aria-label="Interface language" data-i18n-aria="langGroup">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" aria-pressed="false">RU</button>
+      </div>
+    </div>
   </header>
 
   <div class="shell">
     <!-- Inbox -->
-    <aside class="col col-inbox" aria-label="Inbox">
+    <aside class="col col-inbox" aria-label="Inbox" data-i18n-aria="inbox">
       <div class="col-head">
-        <h2 class="col-title">Inbox</h2>
+        <h2 class="col-title" data-i18n="inbox">Inbox</h2>
         <span class="col-count" id="inbox-count"></span>
       </div>
       <div class="inbox-search">
-        <label class="sr-only" for="filter">Filter tickets</label>
-        <input id="filter" type="search" placeholder="Filter by text, id or label" autocomplete="off">
+        <label class="sr-only" for="filter" data-i18n="filterLabel">Filter tickets</label>
+        <input id="filter" type="search" placeholder="Filter by text, id or label" data-i18n-placeholder="filterPh" autocomplete="off">
       </div>
-      <nav class="inbox-list" id="inbox" aria-label="Sample tickets">
-        <p class="muted pad">Loading tickets…</p>
+      <nav class="inbox-list" id="inbox" aria-label="Sample tickets" data-i18n-aria="samplesAria">
+        <p class="muted pad" data-i18n="loadingTickets">Loading tickets…</p>
       </nav>
 
-      <form class="compose" id="compose" aria-label="New ticket">
-        <label class="compose-label" for="compose-text">New ticket</label>
+      <form class="compose" id="compose" aria-label="New ticket" data-i18n-aria="newTicket">
+        <label class="compose-label" for="compose-text" data-i18n="newTicket">New ticket</label>
         <textarea id="compose-text" rows="3" maxlength="5000" dir="auto"
-          placeholder="Paste a customer message in any language"></textarea>
+          placeholder="Paste a customer message in any language" data-i18n-placeholder="composePh"></textarea>
         <div class="compose-row">
           <button type="submit" class="btn btn-primary" id="run">
-            Run co-pilot <kbd id="run-kbd">Ctrl ↵</kbd>
+            <span data-i18n="run">Run co-pilot</span> <kbd id="run-kbd">Ctrl ↵</kbd>
           </button>
         </div>
         <div class="compose-row voice-row">
           <button type="button" class="btn btn-ghost btn-mic" id="mic" aria-pressed="false">
-            <span class="mic-dot" aria-hidden="true"></span><span class="mic-label">Hold to record</span>
+            <span class="mic-dot" aria-hidden="true"></span><span class="mic-label" data-i18n="record">Record</span>
           </button>
-          <button type="button" class="btn btn-ghost" id="upload-btn">Upload audio</button>
+          <button type="button" class="btn btn-ghost" id="upload-btn" data-i18n="upload">Upload audio</button>
           <input type="file" id="upload" accept=".webm,.mp3,.wav,.m4a,.ogg,audio/*" hidden>
         </div>
         <p class="compose-msg" id="compose-msg" role="status" aria-live="polite"></p>
@@ -65,21 +71,21 @@
     <!-- Workspace -->
     <main class="col col-work" id="workspace" tabindex="-1" aria-live="polite" aria-busy="false">
       <section class="empty" id="empty">
-        <p class="empty-kicker">No ticket open</p>
-        <h1 class="empty-title">Pick a ticket from the inbox, or paste one.</h1>
-        <p class="empty-text">The co-pilot screens it, finds the help-centre answer and drafts a reply where every fact is cited.
+        <p class="empty-kicker" data-i18n="emptyKicker">No ticket open</p>
+        <h1 class="empty-title" data-i18n="emptyTitle">Pick a ticket from the inbox, or paste one.</h1>
+        <p class="empty-text" data-i18n="emptyText">The co-pilot screens it, finds the help-centre answer and drafts a reply where every fact is cited.
           It then tells you whether the reply is safe to send, needs an agent, or must decline trading advice.</p>
-        <ol class="empty-steps" aria-label="Pipeline">
-          <li>Guardrails</li><li>Redaction</li><li>Classify</li><li>Retrieve</li><li>Draft</li><li>Verify</li><li>Route</li>
+        <ol class="empty-steps" aria-label="Pipeline" data-i18n-aria="pipeline">
+          <li data-i18n="step.guardrails">Guardrails</li><li data-i18n="step.redaction">Redaction</li><li data-i18n="step.classify">Classify</li><li data-i18n="step.retrieve">Retrieve</li><li data-i18n="step.draft">Draft</li><li data-i18n="step.verify">Verify</li><li data-i18n="step.route">Route</li>
         </ol>
       </section>
       <div id="result" hidden></div>
     </main>
 
     <!-- Sources -->
-    <aside class="col col-sources" aria-label="Sources">
+    <aside class="col col-sources" aria-label="Sources" data-i18n-aria="sources">
       <div class="col-head">
-        <h2 class="col-title">Sources</h2>
+        <h2 class="col-title" data-i18n="sources">Sources</h2>
         <span class="col-count" id="sources-count"></span>
       </div>
       <p class="sources-sum" id="sources-sum">Help-centre pages the reply may quote.</p>
