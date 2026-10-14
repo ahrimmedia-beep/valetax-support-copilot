@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support Co-pilot · Valetax</title>
+  <meta name="description" content="Operator console: triage, grounded draft and routing for support tickets.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Valetax Support Co-pilot">
+      <span class="wordmark">valetax</span>
+      <span class="product">Support Co-pilot</span>
+    </a>
+    <div class="status" id="status" aria-live="polite"></div>
+    <nav class="topnav">
+      <a href="/business-case">Business case</a>
+    </nav>
+  </header>
+
+  <main class="console">
+    <aside class="inbox" aria-label="Inbox">
+      <div class="col-head">
+        <h2>Inbox</h2>
+        <span class="count" id="sample-count"></span>
+      </div>
+      <details class="samples" id="samples-wrap" open>
+        <summary>Sample tickets</summary>
+        <div class="samples-list" id="samples"></div>
+      </details>
+      <form class="compose" id="compose">
+        <label class="sr-only" for="ticket-text">Ticket text</label>
+        <textarea id="ticket-text" rows="4" maxlength="5000" placeholder="Paste a customer message or pick one above"></textarea>
+        <div class="compose-row">
+          <button type="submit" class="btn primary" id="run">Run co-pilot</button>
+          <span class="hint">Ctrl+Enter</span>
+          <span class="spacer"></span>
+          <button type="button" class="btn icon-btn" id="mic" aria-pressed="false" title="Hold to record">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0V4A2.5 2.5 0 0 0 8 1.5Z" fill="currentColor"/><path d="M3.5 7.5A4.5 4.5 0 0 0 8 12a4.5 4.5 0 0 0 4.5-4.5M8 12v2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+            <span>Hold to record</span>
+          </button>
+          <label class="btn icon-btn" for="audio-file">
+            <span>Upload audio</span>
+            <input type="file" id="audio-file" accept="audio/webm,audio/mpeg,audio/wav,audio/mp4,audio/ogg,.webm,.mp3,.wav,.m4a,.ogg">
+          </label>
+        </div>
+        <p class="compose-note" id="compose-note" aria-live="polite"></p>
+      </form>
+    </aside>
+
+    <section class="work" id="work" aria-live="polite"></section>
+
+    <aside class="sources" aria-label="Sources">
+      <div class="col-head">
+        <h2>Sources</h2>
+        <span class="count" id="kb-meta"></span>
+      </div>
+      <div id="kb"></div>
+    </aside>
+  </main>
+</body>
+</html>
