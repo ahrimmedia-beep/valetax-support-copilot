@@ -13,9 +13,9 @@ Run 2026-10-14, 51 labelled tickets (`eval/tickets.jsonl`), prompt `v2-a8c96cda-
 | Strict abstain (holding reply) precision / recall | 93% / 100% (on 45 tickets with a clear label) |
 | Uncovered questions where the model did not claim full coverage | 100% (14/14) |
 | Citation validity (quotes found verbatim in the cited chunk) | 100% (30/30) |
-| Latency p50 / p95 | 1.6 s / 2.8 s |
-| Cost per ticket (mean / p95) | $0.00434 / $0.00632 |
-| Tokens per ticket (mean) | 1910 |
+| Latency p50 / p95 | 1.6 s / 2.7 s |
+| Cost per ticket (mean / p95) | $0.00435 / $0.00654 |
+| Tokens per ticket (mean) | 1911 |
 
 ## Classification
 

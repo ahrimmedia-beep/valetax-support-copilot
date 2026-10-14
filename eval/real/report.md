@@ -12,10 +12,10 @@ Run 2026-10-14, 20 labelled tickets (`eval/tickets.jsonl`), prompt `v2-a8c96cda-
 | Over-escalations (gold auto_draft, sent to a human) | 0 |
 | Strict abstain (holding reply) precision / recall | 88% / 100% (on 14 tickets with a clear label) |
 | Uncovered questions where the model did not claim full coverage | 100% (7/7) |
-| Citation validity (quotes found verbatim in the cited chunk) | 100% (22/22) |
-| Latency p50 / p95 | 2.2 s / 3.4 s |
-| Cost per ticket (mean / p95) | $0.00607 / $0.00778 |
-| Tokens per ticket (mean) | 2530 |
+| Citation validity (quotes found verbatim in the cited chunk) | 100% (21/21) |
+| Latency p50 / p95 | 2.1 s / 2.8 s |
+| Cost per ticket (mean / p95) | $0.00609 / $0.00762 |
+| Tokens per ticket (mean) | 2533 |
 
 ## Classification
 

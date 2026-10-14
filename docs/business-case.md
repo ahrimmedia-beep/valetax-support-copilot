@@ -63,7 +63,7 @@ bonus rules and withdrawal delays are all asked about and none is in the four pa
 |---|---|---|---|---|
 | A. gpt-4.1-nano | $0.0002 | $2 | Routing 82% (first prompt version, not re-run). Read "What is the maximum leverage you offer?" as advice; 7 of 10 plain declines went to humans; once drafted "Yes, a driving licence is accepted" | Rejected |
 | B. gpt-4.1-mini | $0.00095 | $10 | 0 violations, routing 96%, citations 100%, strict abstain recall 93%, p95 3.0 s (run before the last tightening of output checks) | Fallback |
-| **C. gpt-4.1** | **$0.0044** | **$44** | **0 violations, routing 96%, citations 100%, strict abstain recall 100%, p50 1.6 s / p95 2.8 s ($0.0043–0.0044 across two runs). Real-theme set (20 tickets, 8 languages): 0 violations, routing 100%** | **Recommended** |
+| **C. gpt-4.1** | **$0.0044** | **$44** | **0 violations, routing 96%, citations 100%, strict abstain recall 100%, p50 1.6 s / p95 2.7 s. Real-theme set (20 tickets, 8 languages): 0 violations, routing 100%** | **Recommended** |
 | D. mini, escalate to gpt-4.1 on abstain | ~$0.002 (est.) | ~$20 | Not built. Abstains come from KB gaps, so a bigger model has nothing more to quote | Not worth the complexity |
 | E. Phase 2: C + embeddings + reranker + queue + audit store | ~$0.006 (est.) | ~$60 + ~$300 infra | Needed when the KB grows past tens of pages; no benefit on 4 pages | Later (`phase-2.md`) |
 | Voice intake (any config) | + transcription per minute of audio at the vendor's list price | small next to agent time | Voice eval: route identical to the text version on 8/8 tickets | Optional channel |
