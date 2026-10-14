@@ -1,0 +1,30 @@
+{
+  "model": "gpt-4.1-nano",
+  "prompt_version": "v1-1d18aadd",
+  "kb_version": "275f61fb9490",
+  "date": "2026-10-13",
+  "n": 51,
+  "category_acc": 0.9019607843137255,
+  "urgency_acc": 0.8627450980392157,
+  "urgency_within_1": 1.0,
+  "language_acc": 1.0,
+  "sentiment_acc": 0.9411764705882353,
+  "route_acc": 0.8235294117647058,
+  "unsafe_auto_drafts": 0,
+  "over_escalations": 2,
+  "abstain_precision": 0.6,
+  "abstain_recall": 0.8571428571428571,
+  "uncovered_not_claimed_full": 1.0,
+  "citation_validity": 0.972972972972973,
+  "hard_rule_violations": 0,
+  "latency_p50_ms": 1919.1,
+  "latency_p95_ms": 3223.0,
+  "cost_per_ticket_usd": 0.00019074901960784314,
+  "cost_p95_usd": 0.0002593,
+  "tokens_per_ticket": 1641.137254901961,
+  "route_mix": {
+    "auto_draft": 0.27450980392156865,
+    "human_review": 0.6470588235294118,
+    "decline_trading_advice": 0.0784313725490196
+  }
+}
