@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from copilot.voice import FakeSpeech, OpenAISpeech, SpeechError, SpeechProvider
+from copilot.voice import (
+    FakeSpeech,
+    OpenAISpeech,
+    SpeechError,
+    SpeechProvider,
+    transcription_cost,
+)
 from eval.voice_eval import default_ids, normalize_words, wer
 
 
@@ -53,3 +60,11 @@ def test_default_ids_cover_languages() -> None:
         {"id": "s1", "language": "es"},
     ]
     assert default_ids(rows, 3) == ["r1", "s1", "e1"]
+
+
+def test_transcription_cost_from_tokens_duration_or_nothing() -> None:
+    tokens = SimpleNamespace(type="tokens", input_tokens=1_000_000, output_tokens=200_000)
+    assert transcription_cost(tokens) == (0.0, pytest.approx(1.25 + 1.0))
+    duration = SimpleNamespace(type="duration", seconds=120.0)
+    assert transcription_cost(duration) == (120.0, pytest.approx(0.006))
+    assert transcription_cost(None) == (0.0, 0.0)

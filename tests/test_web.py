@@ -213,3 +213,92 @@ def test_feedback_limits_and_bad_lines(client: TestClient, tmp_path: Path) -> No
     with (tmp_path / "data" / "feedback.jsonl").open("a") as f:
         f.write("{torn\n")
     assert client.get("/api/feedback/stats").json()["total"] == 1
+
+
+FEEDBACK = {"ticket_id": "t1", "input_sha256": "a" * 64, "route": "auto_draft", "action": "edited"}
+
+
+def test_demo_token_guards_paid_endpoints(tmp_path: Path) -> None:
+    app = create_app(FakeProvider(), FakeSpeech(), data_dir=tmp_path, demo_token="s3cret")
+    c = TestClient(app)
+    ticket = {"text": "What is the minimum deposit amount?"}
+    assert c.post("/api/triage", json=ticket).status_code == 401
+    assert c.post("/api/triage", json=ticket, headers={"X-Demo-Token": "nope"}).status_code == 401
+    assert c.post("/api/tts", json={"text": "hi"}).status_code == 401
+    assert c.post("/api/feedback", json=FEEDBACK).status_code == 401
+    assert c.post("/api/voice", files={"audio": ("a.webm", b"hi")}).status_code == 401
+    r = c.post("/api/triage", json=ticket, headers={"X-Demo-Token": "s3cret"})
+    assert r.status_code == 200 and r.json()["draft"]
+    # Read-only endpoints stay open so the page can load.
+    assert c.get("/api/health").status_code == 200
+
+
+def test_no_demo_token_means_open(tmp_path: Path) -> None:
+    c = TestClient(create_app(FakeProvider(), FakeSpeech(), data_dir=tmp_path, demo_token=""))
+    assert c.post("/api/tts", json={"text": "hi"}).status_code == 200
+
+
+def test_rate_limit_per_client(tmp_path: Path) -> None:
+    app = create_app(FakeProvider(), FakeSpeech(), data_dir=tmp_path, rate_limit_per_min=2)
+    c = TestClient(app)
+    assert [c.post("/api/tts", json={"text": "hi"}).status_code for _ in range(3)] == [
+        200,
+        200,
+        429,
+    ]
+    r = c.post("/api/triage", json={"text": "hello"})
+    assert r.status_code == 429 and r.json() == {
+        "detail": "too many requests, try again in a minute"
+    }
+    assert c.get("/api/health").status_code == 200  # not limited
+
+
+def test_rate_limiter_window_slides() -> None:
+    from copilot.web.app import RateLimiter
+
+    now = [0.0]
+    limiter = RateLimiter(2, clock=lambda: now[0])
+    assert limiter.allow("a") and limiter.allow("a") and not limiter.allow("a")
+    assert limiter.allow("b")
+    now[0] = 60.5
+    assert limiter.allow("a")
+
+
+def test_feedback_log_is_capped(tmp_path: Path) -> None:
+    app = create_app(FakeProvider(), FakeSpeech(), data_dir=tmp_path, max_feedback_bytes=300)
+    c = TestClient(app)
+    codes = [c.post("/api/feedback", json=FEEDBACK).status_code for _ in range(4)]
+    assert codes[0] == 200 and codes[-1] == 507
+    assert c.post("/api/feedback", json=FEEDBACK).json() == {"detail": "feedback log full"}
+    assert (tmp_path / "feedback.jsonl").stat().st_size < 300 + 300
+
+
+def test_triage_id_is_capped(client: TestClient) -> None:
+    assert client.post("/api/triage", json={"text": "hi", "id": "x" * 101}).status_code == 422
+
+
+def test_provider_error_text_never_reaches_the_browser(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from copilot.llm import OpenAIProvider
+
+    class AuthenticationError(Exception):
+        status_code = 401
+
+    class Completions:
+        def parse(self, **kwargs: object) -> object:
+            raise AuthenticationError("Incorrect API key provided: sk-secret")
+
+    class Client:
+        chat = type("Chat", (), {"completions": Completions()})()
+
+    monkeypatch.chdir(tmp_path)  # no .env here
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider = OpenAIProvider()
+    provider._client = Client()  # type: ignore[assignment]
+    app = create_app(provider, FakeSpeech(), data_dir=tmp_path, eval_dir=tmp_path)
+    r = TestClient(app).post("/api/triage", json={"text": "What is the minimum deposit amount?"})
+    body = r.json()
+    assert r.status_code == 200 and "sk-secret" not in r.text
+    assert body["errors"] == ["classification failed: AuthenticationError (401)"]
+    assert body["decision"]["route"] == "human_review"

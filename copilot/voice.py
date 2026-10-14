@@ -11,9 +11,12 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from copilot.llm import load_dotenv
+from copilot.llm import load_dotenv, provider_error
 
-# USD per minute of audio for gpt-4o-mini-transcribe. List price at the time of writing.
+# gpt-4o-mini-transcribe, list prices at time of writing; check before use.
+# Billed per token when the response reports tokens (USD per 1M input / output tokens),
+# per minute of audio when it reports a duration.
+TRANSCRIBE_USD_PER_M_TOKENS = (1.25, 5.00)
 TRANSCRIBE_USD_PER_MIN = 0.003
 FAKE_SENTENCE = "What is the minimum deposit?"
 
@@ -38,6 +41,24 @@ class SpeechProvider(Protocol):
     ) -> Transcript: ...
 
     def synthesize(self, text: str, language: str) -> bytes: ...
+
+
+def transcription_cost(usage: object) -> tuple[float, float]:
+    """(audio seconds, USD) from the `usage` of a transcription response.
+
+    The SDK reports either tokens (`type="tokens"`, input_tokens / output_tokens) or audio
+    duration (`type="duration"`, seconds). When neither is present both stay 0 and the
+    console shows the cost as "not reported" rather than a made-up figure.
+    """
+    if usage is None:
+        return 0.0, 0.0
+    seconds = float(getattr(usage, "seconds", 0) or 0)
+    tokens_in = int(getattr(usage, "input_tokens", 0) or 0)
+    tokens_out = int(getattr(usage, "output_tokens", 0) or 0)
+    if tokens_in or tokens_out:
+        price_in, price_out = TRANSCRIBE_USD_PER_M_TOKENS
+        return seconds, (tokens_in * price_in + tokens_out * price_out) / 1_000_000
+    return seconds, seconds / 60 * TRANSCRIBE_USD_PER_MIN
 
 
 class OpenAISpeech:
@@ -76,17 +97,14 @@ class OpenAISpeech:
                     response_format="json",
                 )
         except Exception as exc:  # network, bad audio, rate limit
-            raise SpeechError(f"{type(exc).__name__}: {exc}") from exc
-        # The json response of this model carries only text; the duration is usually missing,
-        # so duration_ms and cost stay 0 unless the SDK reports seconds.
-        usage = getattr(response, "usage", None)
-        seconds = float(getattr(usage, "seconds", 0) or 0)
+            raise SpeechError(provider_error(exc, "transcription")) from exc
+        seconds, cost = transcription_cost(getattr(response, "usage", None))
         return Transcript(
             text=response.text.strip(),
             language=language or "",
             model=self.transcribe_model,
             duration_ms=seconds * 1000,
-            cost_usd=seconds / 60 * TRANSCRIBE_USD_PER_MIN,
+            cost_usd=cost,
         )
 
     def synthesize(self, text: str, language: str) -> bytes:
@@ -95,7 +113,7 @@ class OpenAISpeech:
                 model=self.tts_model, voice=self.voice, input=text, response_format="mp3"
             )
         except Exception as exc:
-            raise SpeechError(f"{type(exc).__name__}: {exc}") from exc
+            raise SpeechError(provider_error(exc, "speech synthesis")) from exc
         return response.content
 
 

@@ -130,8 +130,28 @@ const dirFor = (lang, text) => (isRtl(lang, text) ? "rtl" : "auto");
 const firstLine = (t) => t.split(/\n/).find((l) => l.trim()) || t;
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
+// A public demo server may require a token (DEMO_TOKEN). The link carries it as ?token=...;
+// it is kept for this tab only and removed from the address bar.
+const DEMO_TOKEN = (() => {
+  const params = new URLSearchParams(location.search);
+  const fromUrl = params.get("token") || "";
+  let token = fromUrl;
+  try {
+    if (fromUrl) sessionStorage.setItem("demoToken", fromUrl);
+    else token = sessionStorage.getItem("demoToken") || "";
+  } catch { /* storage blocked: use the URL value for this page load */ }
+  if (fromUrl) {
+    params.delete("token");
+    const query = params.toString();
+    try { history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`); } catch { /* ignore */ }
+  }
+  return token;
+})();
+
 async function api(path, opts = {}) {
-  const res = await fetch(path, opts);
+  const headers = new Headers(opts.headers || {});
+  if (DEMO_TOKEN) headers.set("X-Demo-Token", DEMO_TOKEN);
+  const res = await fetch(path, { ...opts, headers });
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;
     try {
@@ -335,7 +355,9 @@ function ticketCard(text, meta, r, transcript = null) {
       transcript.language ? h("span", {}, `language ${transcript.language}`) : null,
       transcript.duration_ms ? h("span", {}, `${(transcript.duration_ms / 1000).toFixed(1)} s audio`) : null,
       h("span", {}, transcript.model),
-      h("span", {}, `$${Number(transcript.cost_usd || 0).toFixed(4)}`)) : null,
+      h("span", {}, !transcript.duration_ms && !transcript.cost_usd
+        ? "cost not reported"
+        : `$${Number(transcript.cost_usd || 0).toFixed(4)}`)) : null,
     metaRow, body, r ? chipsRow(r) : null);
 }
 
@@ -468,8 +490,15 @@ function traceCard(r) {
 
 // ---------- Route ----------
 
+// A decline followed by an answer that passed the draft checks (not a holding reply).
+const declinePlusAnswer = (r) =>
+  r.decision.route === "decline_trading_advice" && !r.draft.abstained && r.draft.sentences.length > 0;
+
 function routeCard(r) {
   const route = ROUTES[r.decision.route] || { cls: "r-review", title: r.decision.route, verdict: "" };
+  const verdict = declinePlusAnswer(r)
+    ? "Fixed decline + checked answer. No advice is given; the answer covers only the support question."
+    : route.verdict;
   const list = h("ul", { class: "reasons", "aria-label": "Why" });
   for (const code of r.decision.reasons) {
     const [sev, text] = reasonInfo(code);
@@ -489,7 +518,7 @@ function routeCard(r) {
     h("div", { class: "route-side" },
       h("span", { class: "eyebrow" }, "Route", h("span", { class: "route-code" }, r.decision.route)),
       h("span", { class: "route-badge" }, route.title),
-      h("p", { class: "route-verdict", style: "margin:0" }, route.verdict)),
+      h("p", { class: "route-verdict", style: "margin:0" }, verdict)),
     list);
 }
 
@@ -534,7 +563,7 @@ function replyCard(r, meta) {
       return h("li", {}, reasonInfo(code)[1], detail ? h("span", { class: "mono" }, ` ${detail}`) : null);
     });
     parts.push(h("div", { class: "banner banner-amber", role: "note" },
-      h("strong", {}, "Holding reply — KB does not cover this"),
+      h("strong", {}, "Holding reply: draft not used"),
       h("span", {}, "The customer gets a neutral holding message. An agent writes the real answer."),
       problems.length ? h("ul", {}, problems) : null));
   } else if (d.problems.length) {
@@ -600,7 +629,9 @@ function replyCard(r, meta) {
 
   const card = h("section", { class: "card reply", "aria-label": "Draft reply" },
     h("div", { class: "card-head" }, h("h2", { class: "card-title" }, "Draft reply"),
-      h("span", { class: "card-sub" }, primaryEdit ? "Edit before sending" : route === "auto_draft" ? "Ready after a read" : "Approved template")),
+      h("span", { class: "card-sub" }, primaryEdit ? "Edit before sending"
+        : route === "auto_draft" ? "Ready after a read"
+          : declinePlusAnswer(r) ? "Fixed decline + checked answer" : "Approved template")),
     parts);
   wireSentences(card);
   return card;

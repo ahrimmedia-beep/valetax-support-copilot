@@ -71,6 +71,10 @@ the model behaving.
 | No complaint / KYC / AML outcomes | Regex flags force `human_review` | Reply scanned for promised or ruled-out outcomes | `human_review` |
 | No invented policy, fees, timelines | Model sees only retrieved KB chunks | Every quote verbatim in its chunk; every sentence of type `fact` cites a chunk; every number and named term in a sentence appears in that sentence's own sources or the ticket | Holding reply ("a colleague will follow up") + `human_review` |
 
+The output scan for advice and outcomes covers English and Russian best, with core stems in
+Spanish, Indonesian, Arabic and Hindi; other languages (Thai, Vietnamese, Malay, Swahili) rely
+on the prompt, the classifier, the agent and the eval.
+
 ## 6. Non-functional requirements
 
 | Area | Requirement | Phase 1 status |

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from copilot.guardrails import redact_pii, scan, scan_reply
+from copilot.templates import DECLINE_TRADING_ADVICE, HOLDING_REPLY
 
 
 @pytest.mark.parametrize(
@@ -88,3 +89,53 @@ def test_scan_reply_catches_advice_and_promises() -> None:
 def test_scan_reply_allows_grounded_conditional_text() -> None:
     assert not scan_reply("Once your withdrawal is approved, you will be notified.")
     assert not scan_reply("The minimum deposit starts from 8 USD, depending on the account type.")
+
+
+# Case outcomes and advice that a model could put in a courtesy sentence (greeting, closing,
+# handoff) or in a fact sentence.
+OUTCOMES_AND_ADVICE = [
+    "Your documents were approved.",
+    "We have approved your verification.",
+    "Your complaint was resolved in your favour.",
+    "Your withdrawal has been reversed.",
+    "We've unblocked your account.",
+    "Su cuenta ha sido desbloqueada.",
+    "Su verificación fue aprobada.",
+    "Le reembolsaremos el depósito.",
+    "Le recomendamos comprar oro ahora.",
+    "Verifikasi Anda telah disetujui.",
+    "Dana Anda akan dikembalikan.",
+    "Sebaiknya beli emas sekarang.",
+    "تمت الموافقة على التحقق الخاص بك",
+    "تم رفض طلب السحب الخاص بك",
+    "ننصحك بشراء الذهب الآن",
+    "आपका सत्यापन स्वीकृत हो गया है।",
+    "आपका खाता अनब्लॉक कर दिया गया है।",
+    "हम सोना खरीदने की सलाह देते हैं।",
+]
+
+
+@pytest.mark.parametrize("text", OUTCOMES_AND_ADVICE)
+def test_scan_reply_catches_outcomes_and_advice_in_six_languages(text: str) -> None:
+    assert scan_reply(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "If your documents were rejected, you will receive an e-mail with the reason.",
+        "Once the request has been approved, the funds are sent to your payment method.",
+        "Una vez aprobada la solicitud, recibirá un correo electrónico.",
+        "Setelah disetujui, dana dikirim ke metode pembayaran Anda.",
+    ],
+)
+def test_scan_reply_allows_conditional_outcomes(text: str) -> None:
+    assert not scan_reply(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [*DECLINE_TRADING_ADVICE.values(), *HOLDING_REPLY.values()],
+)
+def test_fixed_templates_pass_scan_reply(text: str) -> None:
+    assert scan_reply(text) == []

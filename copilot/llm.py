@@ -7,6 +7,7 @@ this file, not in the pipeline.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
@@ -28,10 +29,22 @@ PRICES: dict[str, tuple[float, float]] = {
     "fake": (0.0, 0.0),
 }
 DEFAULT_MODEL = "gpt-4.1"
+log = logging.getLogger(__name__)
 
 
 class LLMError(RuntimeError):
     """The model could not produce a valid structured answer. The pipeline fails closed."""
+
+
+def provider_error(exc: Exception, what: str) -> str:
+    """A short, safe description of a vendor exception: class name and HTTP status only.
+
+    The vendor's own message can echo request details (a masked key, account ids), so it is
+    logged on the server and never put in a result that reaches the browser.
+    """
+    log.error("%s failed: %s: %s", what, type(exc).__name__, exc)
+    status = getattr(exc, "status_code", None)
+    return f"{type(exc).__name__} ({status})" if isinstance(status, int) else type(exc).__name__
 
 
 @dataclass
@@ -92,10 +105,11 @@ class OpenAIProvider:
                 response_format=schema,
             )
         except Exception as exc:  # network, rate limit after retries, schema rejection
-            raise LLMError(f"{type(exc).__name__}: {exc}") from exc
+            raise LLMError(provider_error(exc, "LLM call")) from exc
         message = response.choices[0].message
         if message.parsed is None:
-            raise LLMError(f"no parsed output (refusal={message.refusal!r})")
+            log.error("LLM returned no parsed output (refusal=%r)", message.refusal)
+            raise LLMError("no parsed output")
         tokens_in = response.usage.prompt_tokens if response.usage else 0
         tokens_out = response.usage.completion_tokens if response.usage else 0
         usage = Usage(

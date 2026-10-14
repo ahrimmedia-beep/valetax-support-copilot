@@ -82,7 +82,10 @@ a schema error or a timeout gives the same safe result.
 support it, if its numbers and terms are grounded; there is no lexical-overlap check because
 replies are multilingual and quotes are English. A number the customer wrote in the ticket
 counts as grounded. Both are visible to the agent next to the quote, and both are candidates
-for an entailment check (a small NLI model or an LLM judge) in Phase 2.
+for an entailment check (a small NLI model or an LLM judge) in Phase 2. The output scan for
+advice and outcomes covers English and Russian best, with core stems in Spanish, Indonesian,
+Arabic and Hindi; other languages (Thai, Vietnamese, Malay, Swahili) rely on the prompt, the
+classifier, the agent and the eval.
 
 ## 4. Stack and why
 
@@ -141,7 +144,13 @@ docs/             PRD, architecture, business case, decisions, phase 2, KB audit
 | `GET /api/feedback/stats` | Counts of agent actions |
 
 Blocking model calls run in FastAPI's threadpool. Vendor error texts are logged on the server
-and never returned to the browser.
+and never returned to the browser: a result carries only the error class and HTTP status
+(for example `AuthenticationError (401)`).
+
+The four `POST` endpoints that cost money or write to disk (`triage`, `voice`, `tts`,
+`feedback`) are rate-limited per client IP (`RATE_LIMIT_PER_MIN`, default 30, in memory) and,
+when `DEMO_TOKEN` is set, require the header `X-Demo-Token`. The feedback log stops accepting
+rows at 5 MB (`507 feedback log full`).
 
 ## 7. Audit record
 

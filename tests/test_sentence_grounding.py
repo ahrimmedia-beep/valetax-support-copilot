@@ -264,3 +264,31 @@ def test_fake_provider_drafts_a_greeting_and_a_cited_fact() -> None:
         ("fact", ["withdraw#skrill"]),
     ]
     assert draft.sentences[1].text == SKRILL
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Your documents were approved.",
+        "We have approved your verification.",
+        "Your complaint was resolved in your favour.",
+        "Su cuenta ha sido desbloqueada.",
+        "تمت الموافقة على التحقق الخاص بك",
+        "Le recomendamos comprar oro ahora.",
+    ],
+)
+def test_outcome_or_advice_in_a_courtesy_sentence_is_rejected(text: str) -> None:
+    draft = _run([fact(SKRILL, 0), LLMSentence(text=text, kind="handoff", cites=[])])
+    assert draft.abstained
+    assert f"fact_disguised_as_handoff: {text}" in draft.problems
+    assert any(p.startswith("unsafe_reply: ") for p in draft.problems)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Your withdrawal was approved.", "Su retiro fue aprobado.", "Penarikan Anda telah disetujui."],
+)
+def test_outcome_in_a_cited_fact_sentence_is_rejected(text: str) -> None:
+    draft = _run([LLMSentence(text=text, kind="fact", cites=[0])])
+    assert draft.abstained
+    assert any(p.startswith("unsafe_reply: outcome_promise") for p in draft.problems)

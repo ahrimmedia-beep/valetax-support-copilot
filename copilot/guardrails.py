@@ -350,6 +350,17 @@ ADVICE_IN_REPLY = _rx(
     r"\bprice target\b",
     r"(рекомендую|советую)\s+(купить|продать|использовать|выбрать|торговать)",
     r"стоит\s+(купить|продать)",
+    # Spanish
+    r"\b(le|te|les)\s+(recomendamos|recomiendo|aconsejamos|aconsejo|sugerimos|sugiero)\s+(que\s+)?"
+    r"(compr|vend|invert|oper|us)",
+    r"\b(compre|venda)\b",
+    # Indonesian
+    r"\bsebaiknya\s+(anda\s+)?(beli|jual|membeli|menjual)\b",
+    r"\bkami\s+(sarankan|rekomendasikan)\b",
+    # Arabic
+    r"ننصحك\s+(بشراء|ببيع|باستخدام)",
+    # Hindi
+    r"(खरीदने|बेचने)\s+की\s+सलाह",
 )
 
 OUTCOME_PROMISE = _rx(
@@ -358,12 +369,35 @@ OUTCOME_PROMISE = _rx(
     r"\bwe (will|'ll|can) (refund|compensate|reimburse|unblock|unlock|approve|reverse)\b",
     r"\b(will|won'?t|will not|would not|wouldn'?t) be (closed|terminated|suspended|blocked|frozen)\b",
     r"\bguarantee",
+    # A decision reported as already taken ("Your documents were approved.").
+    r"\b(was|were|has been|have been|had been)\s+(approved|rejected|declined|resolved|unblocked"
+    r"|unfrozen|closed|refunded|reversed)\b",
+    r"\bwe(\s+have|'ve)\s+(approved|rejected|resolved|unblocked|refunded)\b",
+    r"\bresolved in your favou?r\b",
+    # Russian
     r"(будет|был[аио]?)\s+(одобрен|разблокирован|возвращен)",
     r"мы (вернем|вернём|компенсируем|разблокируем)",
+    # Spanish
+    r"\b(aprobad|rechazad|desbloquead|resuelt|reembolsad)\w*",
+    r"\breembolsar(emos|[ée])\b",
+    # Indonesian
+    r"\b(disetujui|ditolak|dibuka\s+blokir\w*|dikembalikan)\b",
+    # Arabic
+    r"تمت\s+الموافقة|تم\s+رفض|تم\s+إلغاء\s+الحظر",
+    # Hindi (अस्वीकृत contains स्वीकृत)
+    r"स्वीकृत|अनब्लॉक",
 )
 
+# Core stems only outside English and Russian: languages without a list here (Thai,
+# Vietnamese, Malay, Swahili...) rely on the prompt, the classifier, the agent and the eval.
 
-_CONDITIONAL = re.compile(r"\b(once|when|after|if|until|as soon as)\W+$", re.IGNORECASE)
+# A conditional earlier in the same clause makes an outcome hypothetical: "once your withdrawal
+# is approved, ...", "if your documents were rejected, ...", "si su retiro es aprobado".
+_CONDITIONAL = re.compile(
+    r"\b(once|when|after|if|until|as soon as|una vez|cuando|si|tras|después de|setelah|jika"
+    r"|apabila|bila|ketika)\b[^.!?;:,\n]{0,40}$|(عندما|إذا|اذا|بعد|عند)[^.!?؟،;:\n]{0,40}$",
+    re.IGNORECASE,
+)
 
 
 def _promises(text: str) -> list[str]:
@@ -371,7 +405,7 @@ def _promises(text: str) -> list[str]:
     found: list[str] = []
     for p in OUTCOME_PROMISE:
         for m in p.finditer(text):
-            if not _CONDITIONAL.search(text[max(0, m.start() - 20) : m.start()]):
+            if not _CONDITIONAL.search(text[max(0, m.start() - 60) : m.start()]):
                 found.append(m.group(0))
                 break
     return found

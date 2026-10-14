@@ -21,7 +21,8 @@ each sentence is checked against its own sources:
      sentence cites or in the ticket - not merely somewhere in the reply's sources
      (`sentence_number_not_in_its_source`, `sentence_term_not_in_its_source`);
   9. a greeting, closing or handoff carries no numbers, no specific terms, no timeline,
-     price or promise words (guardrails.courtesy_violations), at most MAX_COURTESY_WORDS
+     price or promise words (guardrails.courtesy_violations), no advice or case outcome
+     (guardrails.scan_reply, run on the sentence alone), at most MAX_COURTESY_WORDS
      words and MAX_COURTESY_CHARS characters (for scripts without spaces), so facts cannot
      hide in sentences that need no source (`fact_disguised_as_<kind>`).
 
@@ -160,6 +161,7 @@ def check_sentences(
                 numbers_in(text)
                 or guardrails.specific_terms(text)
                 or guardrails.courtesy_violations(text)
+                or guardrails.scan_reply(text)
                 or too_long
             ):
                 problems.append(f"fact_disguised_as_{s.kind}: {text}")

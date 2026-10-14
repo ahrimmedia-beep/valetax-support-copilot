@@ -7,11 +7,14 @@ tested modules. `create_app` takes its dependencies as arguments so tests run fu
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import os
 import re
 import threading
+import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,12 +39,17 @@ AUDIO_EXTENSIONS = {".webm", ".mp3", ".wav", ".m4a", ".ogg"}
 MAX_TICKET_CHARS = 5000
 MULTIPART_OVERHEAD = 64 * 1024
 SPEECH_DOWN = "speech service unavailable"
+# Endpoints that cost money (model and speech calls) or write to disk.
+GUARDED_PATHS = {"/api/triage", "/api/voice", "/api/tts", "/api/feedback"}
+DEFAULT_RATE_LIMIT_PER_MIN = 30
+MAX_FEEDBACK_BYTES = 5 * 1024 * 1024
+TOO_MANY = "too many requests, try again in a minute"
 log = logging.getLogger(__name__)
 
 
 class TriageRequest(BaseModel):
     text: str = Field(max_length=MAX_TICKET_CHARS)
-    id: str | None = None
+    id: str | None = Field(default=None, max_length=100)
 
     @field_validator("text")
     @classmethod
@@ -82,6 +90,35 @@ def default_speech() -> SpeechProvider:
     if _wants_openai(os.environ.get("COPILOT_PROVIDER")):
         return OpenAISpeech()
     return FakeSpeech()
+
+
+class RateLimiter:
+    """At most `per_min` requests per client in any 60-second window. In memory, one process:
+    enough for a demo server, not a replacement for a gateway limit in production."""
+
+    def __init__(self, per_min: int, clock: Callable[[], float] = time.monotonic) -> None:
+        self.per_min = per_min
+        self.clock = clock
+        self._hits: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, client: str) -> bool:
+        now = self.clock()
+        with self._lock:
+            if len(self._hits) > 10_000:  # drop idle clients so memory stays bounded
+                self._hits = {k: v for k, v in self._hits.items() if v and v[-1] > now - 60}
+            hits = self._hits.setdefault(client, deque())
+            while hits and hits[0] <= now - 60:
+                hits.popleft()
+            if len(hits) >= self.per_min:
+                return False
+            hits.append(now)
+            return True
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.environ.get(name, "").strip()
+    return int(value) if value.isdigit() else default
 
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -143,7 +180,12 @@ def create_app(
     static_dir: Path | None = None,
     kb_dir: Path = DEFAULT_KB_DIR,
     eval_dir: Path | None = None,
+    demo_token: str | None = None,
+    rate_limit_per_min: int | None = None,
+    max_feedback_bytes: int = MAX_FEEDBACK_BYTES,
 ) -> FastAPI:
+    """`demo_token` and `rate_limit_per_min` default to the DEMO_TOKEN and RATE_LIMIT_PER_MIN
+    environment variables (read after .env is loaded)."""
     provider = provider or default_provider()
     if speech is None:
         # An explicit fake LLM must never pull in the paid speech API.
@@ -154,6 +196,12 @@ def create_app(
     copilot = Copilot(provider, kb_dir)
     feedback_path = data_dir / "feedback.jsonl"
     lock = threading.Lock()
+    token = demo_token if demo_token is not None else os.environ.get("DEMO_TOKEN", "").strip()
+    limiter = RateLimiter(
+        rate_limit_per_min
+        if rate_limit_per_min is not None
+        else _env_int("RATE_LIMIT_PER_MIN", DEFAULT_RATE_LIMIT_PER_MIN)
+    )
 
     app = FastAPI(title="Support co-pilot")
 
@@ -168,6 +216,20 @@ def create_app(
                 return JSONResponse({"detail": "Content-Length required"}, status_code=411)
             if not length.isdigit() or int(length) > MAX_AUDIO_BYTES + MULTIPART_OVERHEAD:
                 return JSONResponse({"detail": "audio is larger than 10 MB"}, status_code=413)
+        return await call_next(request)
+
+    # Registered after the upload check, so it runs first: a refused request is never parsed.
+    @app.middleware("http")
+    async def guard_paid_endpoints(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        if request.method == "POST" and request.url.path in GUARDED_PATHS:
+            client = request.client.host if request.client else "unknown"
+            if not limiter.allow(client):
+                return JSONResponse({"detail": TOO_MANY}, status_code=429)
+            sent = request.headers.get("x-demo-token", "")
+            if token and not hmac.compare_digest(sent.encode(), token.encode()):
+                return JSONResponse({"detail": "demo token required"}, status_code=401)
         return await call_next(request)
 
     def page(name: str) -> FileResponse:
@@ -250,6 +312,8 @@ def create_app(
     def feedback(req: FeedbackRequest) -> dict[str, bool]:
         row = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), **req.model_dump()}
         with lock:
+            if feedback_path.exists() and feedback_path.stat().st_size >= max_feedback_bytes:
+                raise HTTPException(507, "feedback log full")
             data_dir.mkdir(parents=True, exist_ok=True)
             with feedback_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")

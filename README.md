@@ -63,6 +63,12 @@ uv run python -m eval.run --tickets eval/tickets_real.jsonl --out eval/real # re
 uv run python -m eval.voice_eval                                            # voice
 ```
 
+**Running a public demo.** Run it with `--provider fake` (no key, no cost), or set
+`DEMO_TOKEN=...` and share the link as `https://<host>/?token=...`: the paid endpoints then
+refuse requests without the token, and every client is limited to 30 requests a minute
+(`RATE_LIMIT_PER_MIN`). The real key stays in the local `.env` on the server and never goes
+to the browser.
+
 ## How a ticket flows
 
 ```mermaid

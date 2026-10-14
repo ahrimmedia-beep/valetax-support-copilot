@@ -112,7 +112,7 @@ still gets a safe default classification, the holding reply and `human_review`
 ## 12. An offline fake provider for tests; the eval uses the real model
 
 **Decision.** `FakeProvider` implements the same interface with deterministic heuristics
-and injectable responses. All 78 tests run offline, free, in under a second; CI needs no
+and injectable responses. All offline tests run free, in under a second; CI needs no
 key. `eval/run.py` runs the real model and its report is committed.
 **Why.** Unit tests check our code (checks, routing, failure handling), including cases a
 real model rarely produces on demand (fabricated quotes, outages). The eval checks the model.
