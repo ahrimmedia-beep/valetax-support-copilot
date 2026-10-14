@@ -35,7 +35,7 @@ citation proved a quote exists, not that each sentence of the reply follows from
 | 13:05–13:20 | Final review and fixes | Whole-branch review for hard-rule paths, XSS, contract mismatches and doc accuracy. Fixed: a case outcome or advice in past tense or in Spanish/Arabic could ride in a courtesy sentence; vendor error text could reach the browser; paid endpoints had no token or rate limit. Evals re-run, docs updated to the new numbers |
 | 13:20– | Release checks | Tests, lint, types, secret scan, CI |
 
-Result: 214 offline tests, operator console, voice channel, 71 labelled tickets in 10
+Result: 227 offline tests, operator console, voice channel, 71 labelled tickets in 10
 languages, per-sentence grounding, every number in the docs traceable to an eval report.
 
 ## How the work was checked
