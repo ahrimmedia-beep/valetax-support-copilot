@@ -19,7 +19,14 @@ body{margin:0;background:var(--bg);color:var(--dark);font:15px/1.5 Inter,system-
 h1,h2,h3,.num{font-family:Manrope,Inter,sans-serif;color:var(--navy)}
 a{color:var(--blue)}
 .wrap{max-width:1180px;margin:0 auto;padding:20px 24px 40px}
-.top{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:13px;color:var(--g2)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;font-size:13px;color:var(--g2)}
+.tools{display:flex;align-items:center;gap:14px}
+.lang{display:none;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.js .lang{display:inline-flex}
+.lang button{border:0;background:#fff;padding:4px 11px;font:600 12px/1.4 Inter,system-ui,sans-serif;color:var(--g1);cursor:pointer}
+.lang button+button{border-left:1px solid var(--line)}
+.lang button[aria-pressed=true]{background:var(--navy);color:#fff}
+.lang button:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
 .top a{text-decoration:none;font-weight:500}
 .top strong{font-family:Manrope;color:var(--navy);font-size:14px}
 .verdict{margin:14px 0 18px;padding:22px 26px;border-radius:16px;background:var(--green-pale);border:1px solid #bfe9c8}
@@ -84,7 +91,7 @@ noscript .card{margin-top:18px}
   @page{size:A4;margin:8mm}
   body{background:#fff;font-size:9.5px;line-height:1.35}
   .wrap{padding:0;max-width:none}
-  .top a,.presets{display:none}
+  .top a,.presets,.lang{display:none}
   .card,.verdict{border-radius:8px;padding:8px 10px;break-inside:avoid}
   .verdict{margin:6px 0 8px}
   .verdict h1{font-size:17px}
@@ -109,21 +116,23 @@ noscript .card{margin-top:18px}
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><strong>Support co-pilot · Business case</strong><a href="/">&larr; Back to the co-pilot</a></div>
+  <div class="top"><strong data-i18n="brand">Support co-pilot · Business case</strong>
+    <div class="tools"><div class="lang" role="group" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" aria-pressed="false">RU</button></div>
+    <a href="/" data-i18n="back">&larr; Back to the co-pilot</a></div></div>
 
   <noscript>
     <div class="verdict"><div class="q">Is this worth running at 10,000 tickets a month?</div>
-      <h1>Yes. Net +$2,063/month at $8/h, payback 2.9 months.</h1>
+      <h1>Yes. Net +$2,056/month at $8/h, payback 2.9 months.</h1>
       <p>Base case, gpt-4.1. Enable JavaScript to change the inputs.</p></div>
     <div class="card"><h2>Base case</h2>
       <table>
         <tr><th></th><th class="r">$8/h</th><th class="r">$20/h</th></tr>
         <tr><td>Saved hours per month (about 2.5 FTE)</td><td class="r">400</td><td class="r">400</td></tr>
         <tr><td>Gross saving</td><td class="r">$3,200</td><td class="r">$8,000</td></tr>
-        <tr><td>Running cost (LLM $37 + $1,100)</td><td class="r">$1,137</td><td class="r">$1,137</td></tr>
-        <tr><td>Net per month</td><td class="r">$2,063</td><td class="r">$6,863</td></tr>
+        <tr><td>Running cost (LLM $44 + $1,100)</td><td class="r">$1,144</td><td class="r">$1,144</td></tr>
+        <tr><td>Net per month</td><td class="r">$2,056</td><td class="r">$6,856</td></tr>
         <tr><td>Payback of $6,000 rollout</td><td class="r">2.9 months</td><td class="r">0.9 months</td></tr>
-        <tr><td>Break-even volume</td><td class="r">3,480 tickets/month</td><td class="r">1,380 tickets/month</td></tr>
+        <tr><td>Break-even volume</td><td class="r">3,490 tickets/month</td><td class="r">1,380 tickets/month</td></tr>
       </table>
       <p class="note">Recommended configuration: gpt-4.1 for both LLM steps, gpt-4.1-mini as automatic fallback, nothing auto-sent.</p>
     </div>
@@ -131,38 +140,38 @@ noscript .card{margin-top:18px}
 
   <div class="app">
     <div id="verdict" class="verdict">
-      <div class="q">Is this worth running at our volume, and with which configuration?</div>
+      <div class="q" data-i18n="q">Is this worth running at our volume, and with which configuration?</div>
       <h1 id="vh"></h1>
       <p id="vp"></p>
     </div>
 
     <div class="grid">
-      <section class="card" aria-label="Inputs">
-        <h2>Inputs</h2>
+      <section class="card" aria-label="Inputs" data-i18n-aria="inputs">
+        <h2 data-i18n="inputs">Inputs</h2>
         <div id="inputs"></div>
         <div class="field">
-          <div class="lab"><span class="t">LLM configuration <span class="tag m">measured</span></span></div>
-          <select id="model"></select>
+          <div class="lab"><span class="t" data-i18n="llmcfg">LLM configuration <span class="tag m">measured</span></span></div>
+          <select id="model" data-i18n-aria="llmcfgAria" aria-label="LLM configuration"></select>
         </div>
         <div class="legend" style="margin-top:6px">
-          <span><span class="tag m">measured</span> from <code>eval/</code></span>
-          <span><span class="tag a">assumption</span> replace with real data</span>
+          <span data-i18n="lg_m"><span class="tag m">measured</span> from <code>eval/</code></span>
+          <span data-i18n="lg_a"><span class="tag a">assumption</span> replace with real data</span>
         </div>
       </section>
 
       <div class="right">
-        <section class="card" aria-label="Results">
-          <h2>Result <span id="rate-label" style="font-weight:500;color:var(--g2);font-size:13px"></span></h2>
+        <section class="card" aria-label="Results" data-i18n-aria="result">
+          <h2><span data-i18n="result">Result</span> <span id="rate-label" style="font-weight:500;color:var(--g2);font-size:13px"></span></h2>
           <div class="kpis" id="kpis"></div>
           <table style="margin-top:14px">
-            <tr><th>Both scenarios</th><th class="r">$8/h</th><th class="r">$20/h</th></tr>
+            <tr><th data-i18n="both">Both scenarios</th><th class="r" data-i18n="h8">$8/h</th><th class="r" data-i18n="h20">$20/h</th></tr>
             <tbody id="scen"></tbody>
           </table>
         </section>
-        <section class="card" aria-label="Sensitivity">
-          <h2>Sensitivity: net per month</h2>
+        <section class="card" aria-label="Sensitivity" data-i18n-aria="sensTitle">
+          <h2 data-i18n="sensTitle">Sensitivity: net per month</h2>
           <table>
-            <tr><th>Case</th><th class="r">Saved hours</th><th class="r">Net at $8/h</th><th class="r">Net at $20/h</th></tr>
+            <tr><th data-i18n="s_case">Case</th><th class="r" data-i18n="s_hours">Saved hours</th><th class="r" data-i18n="s_n8">Net at $8/h</th><th class="r" data-i18n="s_n20">Net at $20/h</th></tr>
             <tbody id="sens"></tbody>
           </table>
           <p class="note" id="lever"></p>
@@ -170,38 +179,186 @@ noscript .card{margin-top:18px}
       </div>
     </div>
 
-    <section class="card wide" aria-label="Configurations">
-      <h2>Configurations compared</h2>
+    <section class="card wide" aria-label="Configurations" data-i18n-aria="cfgTitle">
+      <h2 data-i18n="cfgTitle">Configurations compared</h2>
       <div class="cfgwrap">
       <table class="cfg" id="cfg">
-        <tr><th>Config</th><th class="r">LLM $/ticket</th><th class="r">$/month @10k</th><th>Quality on the eval (51 tickets, 2 runs) <span class="tag m">measured</span></th><th>Verdict</th></tr>
-        <tr data-m="gpt-4.1-nano" class="rej"><td>A. gpt-4.1-nano</td><td class="r">$0.0002</td><td class="r">$2</td><td>Routing 82% (first prompt version, not re-run). Read "maximum leverage" as advice; 7 of 10 plain declines went to humans.</td><td>Rejected</td></tr>
-        <tr data-m="gpt-4.1-mini"><td>B. gpt-4.1-mini</td><td class="r">$0.00095</td><td class="r">$10</td><td>0 violations, routing 96%, citations 100%, strict abstain recall 93%, p95 3.0 s.</td><td>Fallback</td></tr>
-        <tr data-m="gpt-4.1"><td><strong>C. gpt-4.1</strong></td><td class="r"><strong>$0.0044</strong></td><td class="r"><strong>$44</strong></td><td>0 violations, routing 96%, citations 100%, strict abstain recall 100%, p95 3.0 s. Real-theme set (20 tickets, 8 languages): 0 violations, routing 100%.</td><td><strong>Recommended</strong></td></tr>
-        <tr><td>D. mini, escalate to gpt-4.1</td><td class="r">~$0.002 <span class="tag c">estimate</span></td><td class="r">~$20</td><td>Not built. All 14 uncovered tickets were uncovered for every model: abstains come from KB gaps.</td><td>Not worth the complexity</td></tr>
-        <tr><td>E. Phase 2 (embeddings, reranker, queue, audit store)</td><td class="r">~$0.006 <span class="tag c">estimate</span></td><td class="r">~$60 + ~$300 infra</td><td>Needed when the KB grows past tens of pages; no benefit on 4 pages.</td><td>Later</td></tr>
+        <tr><th data-i18n="c_h1">Config</th><th class="r" data-i18n="c_h2">LLM $/ticket</th><th class="r" data-i18n="c_h3">$/month @10k</th><th data-i18n="c_h4">Quality on the eval (51 tickets, 2 runs) <span class="tag m">measured</span></th><th data-i18n="c_h5">Verdict</th></tr>
+        <tr data-m="gpt-4.1-nano" class="rej"><td>A. gpt-4.1-nano</td><td class="r" data-i18n="a_cost">$0.0002</td><td class="r">$2</td><td data-i18n="a_q">Routing 82% (first prompt version, not re-run). Read "maximum leverage" as advice; 7 of 10 plain declines went to humans.</td><td data-i18n="a_v">Rejected</td></tr>
+        <tr data-m="gpt-4.1-mini"><td>B. gpt-4.1-mini</td><td class="r" data-i18n="b_cost">$0.00095</td><td class="r">$10</td><td data-i18n="b_q">0 violations, routing 96%, citations 100%, strict abstain recall 93%, p95 3.0 s.</td><td data-i18n="b_v">Fallback</td></tr>
+        <tr data-m="gpt-4.1"><td><strong>C. gpt-4.1</strong></td><td class="r" data-i18n="c_cost"><strong>$0.0044</strong></td><td class="r"><strong>$44</strong></td><td data-i18n="c_q">0 violations, routing 96%, citations 100%, strict abstain recall 100%, p95 3.0 s. Real-theme set (20 tickets, 8 languages): 0 violations, routing 100%.</td><td data-i18n="c_v"><strong>Recommended</strong></td></tr>
+        <tr><td data-i18n="d_name">D. mini, escalate to gpt-4.1</td><td class="r" data-i18n="d_cost">~$0.002 <span class="tag c">estimate</span></td><td class="r">~$20</td><td data-i18n="d_q">Not built. All 14 uncovered tickets were uncovered for every model: abstains come from KB gaps.</td><td data-i18n="d_v">Not worth the complexity</td></tr>
+        <tr><td data-i18n="e_name">E. Phase 2 (embeddings, reranker, queue, audit store)</td><td class="r" data-i18n="e_cost">~$0.006 <span class="tag c">estimate</span></td><td class="r" data-i18n="e_month">~$60 + ~$300 infra</td><td data-i18n="e_q">Needed when the KB grows past tens of pages; no benefit on 4 pages.</td><td data-i18n="e_v">Later</td></tr>
       </table>
       </div>
-      <p class="note"><strong>Recommended: gpt-4.1 for both LLM steps, gpt-4.1-mini as automatic fallback, nothing auto-sent.</strong> The LLM bill is about 1% of the savings, so choose the model on quality. B and C tie on routing and safety; C wins on abstention discipline and latency for $34/month.</p>
+      <p class="note" data-i18n="cfgNote"><strong>Recommended: gpt-4.1 for both LLM steps, gpt-4.1-mini as automatic fallback, nothing auto-sent.</strong> The LLM bill is about 1% of the savings, so choose the model on quality. B and C tie on routing and safety; C wins on abstention discipline and latency for $34/month.</p>
     </section>
 
     <div class="two">
       <section class="card">
-        <h2>What would change the answer</h2>
+        <h2 data-i18n="flipTitle">What would change the answer</h2>
         <p class="note" style="margin-top:0" id="flip"></p>
-        <p class="note">Measure the real saving in a two-week assist-mode pilot before full rollout.</p>
+        <p class="note" data-i18n="pilot">Measure the real saving in a two-week assist-mode pilot before full rollout.</p>
       </section>
       <section class="card">
-        <h2>Measured vs assumed</h2>
-        <p class="note" style="margin-top:0"><span class="tag m">measured</span> LLM cost per ticket, routing and safety results (51 labelled tickets, <code>eval/summary.json</code>).</p>
-        <p class="note"><span class="tag a">assumption</span> volumes, handle times, route mix, agent cost, running and rollout cost. The eval set is deliberately adversarial (31% auto_draft), so its mix is not used for the production mix.</p>
-        <p class="note"><span class="tag a">assumption</span> The route mix applies to all tickets: tickets outside the four KB topics mostly land in human_review, which still saves the triage minute.</p>
+        <h2 data-i18n="mvaTitle">Measured vs assumed</h2>
+        <p class="note" style="margin-top:0" data-i18n="mva1"><span class="tag m">measured</span> LLM cost per ticket, routing and safety results (51 labelled tickets, <code>eval/summary.json</code>).</p>
+        <p class="note" data-i18n="mva2"><span class="tag a">assumption</span> volumes, handle times, route mix, agent cost, running and rollout cost. The eval set is deliberately adversarial (31% auto_draft), so its mix is not used for the production mix.</p>
+        <p class="note" data-i18n="mva3"><span class="tag a">assumption</span> The route mix applies to all tickets: tickets outside the four KB topics mostly land in human_review, which still saves the triage minute.</p>
       </section>
     </div>
   </div>
 </div>
 
 <script>
+// ---- i18n: all visible text lives here. Tokens {m} {a} {e} become tag badges. ----
+const I18N = {
+  en: {
+    locale: 'en-US',
+    title: 'Business case: support co-pilot',
+    tags: { a: 'assumption', m: 'measured', c: 'context only', e: 'estimate' },
+    units: { '': '', min: 'min', '%': '%', '$': '$', '$/h': '$/h' },
+    s: {
+      brand: 'Support co-pilot · Business case',
+      back: '&larr; Back to the co-pilot',
+      q: 'Is this worth running at our volume, and with which configuration?',
+      inputs: 'Inputs',
+      llmcfg: 'LLM configuration {m}', llmcfgAria: 'LLM configuration',
+      lg_m: '{m} from <code>eval/</code>',
+      lg_a: '{a} replace with real data',
+      result: 'Result', both: 'Both scenarios', h8: '$8/h', h20: '$20/h',
+      sensTitle: 'Sensitivity: net per month',
+      s_case: 'Case', s_hours: 'Saved hours', s_n8: 'Net at $8/h', s_n20: 'Net at $20/h',
+      cfgTitle: 'Configurations compared',
+      c_h1: 'Config', c_h2: 'LLM $/ticket', c_h3: '$/month @10k',
+      c_h4: 'Quality on the eval (51 tickets, 2 runs) {m}', c_h5: 'Verdict',
+      a_cost: '$0.0002', b_cost: '$0.00095', c_cost: '<strong>$0.0044</strong>',
+      a_q: 'Routing 82% (first prompt version, not re-run). Read "maximum leverage" as advice; 7 of 10 plain declines went to humans.',
+      b_q: '0 violations, routing 96%, citations 100%, strict abstain recall 93%, p95 3.0 s.',
+      c_q: '0 violations, routing 96%, citations 100%, strict abstain recall 100%, p95 3.0 s. Real-theme set (20 tickets, 8 languages): 0 violations, routing 100%.',
+      a_v: 'Rejected', b_v: 'Fallback', c_v: '<strong>Recommended</strong>',
+      d_name: 'D. mini, escalate to gpt-4.1', d_cost: '~$0.002 {e}',
+      d_q: 'Not built. All 14 uncovered tickets were uncovered for every model: abstains come from KB gaps.',
+      d_v: 'Not worth the complexity',
+      e_name: 'E. Phase 2 (embeddings, reranker, queue, audit store)', e_cost: '~$0.006 {e}',
+      e_month: '~$60 + ~$300 infra',
+      e_q: 'Needed when the KB grows past tens of pages; no benefit on 4 pages.',
+      e_v: 'Later',
+      cfgNote: '<strong>Recommended: gpt-4.1 for both LLM steps, gpt-4.1-mini as automatic fallback, nothing auto-sent.</strong> The LLM bill is about 1% of the savings, so choose the model on quality. B and C tie on routing and safety; C wins on abstention discipline and latency for $34/month.',
+      flipTitle: 'What would change the answer',
+      pilot: 'Measure the real saving in a two-week assist-mode pilot before full rollout.',
+      mvaTitle: 'Measured vs assumed',
+      mva1: '{m} LLM cost per ticket, routing and safety results (51 labelled tickets, <code>eval/summary.json</code>).',
+      mva2: '{a} volumes, handle times, route mix, agent cost, running and rollout cost. The eval set is deliberately adversarial (31% auto_draft), so its mix is not used for the production mix.',
+      mva3: '{a} The route mix applies to all tickets: tickets outside the four KB topics mostly land in human_review, which still saves the triage minute.',
+    },
+    f: {
+      tickets: 'Tickets per month', handleMin: 'Handle time today', autoPct: 'auto_draft share', declinePct: 'decline share',
+      reviewSaveMin: 'human_review saving', rate: 'Agent cost', running: 'Running cost per month', rollout: 'One-time rollout',
+    },
+    numberSuffix: ' (number)',
+    perTicket: '/ticket',
+    none: 'none',
+    months: (x) => x + ' months',
+    mo: (x) => x + ' mo',
+    verdictYes: (net, rate, pb) => `Yes. Net ${net} a month at $${rate}/h, ${pb}.`,
+    verdictNo: (net, rate) => `Not at these settings. Net ${net} a month at $${rate}/h.`,
+    pbText: (x) => (x === null ? 'no payback' : 'payback ' + x + ' months'),
+    beText: (n) => (n === null ? 'never at this rate' : n + ' tickets/month'),
+    vp: (hours, fte, be, ok) => `${hours} agent-hours saved a month (${fte} FTE), break-even at ${be}. `
+      + (ok ? 'Recommended: gpt-4.1 for both LLM steps, gpt-4.1-mini as fallback, nothing auto-sent.' : 'Raise the auto_draft share or the volume, or check the inputs.'),
+    rateLabel: (rate, model) => `at $${rate}/h, ${model}`,
+    kNet: 'Net per month', kNetS: (g, c) => `gross ${g} minus ${c}`,
+    kHours: 'Saved hours', kHoursS: (fte, h) => `${fte} FTE at ${h} h/month`,
+    kGross: 'Gross saving', kGrossS: (m) => `${m} min saved per ticket`,
+    kLlm: 'LLM cost', kLlmS: (p) => `${p}% of the saving`,
+    kPay: 'Payback', kPayS: (m) => `of ${m} rollout`,
+    kBe: 'Break-even', kBeS: 'tickets per month',
+    rGross: 'Gross saving', rRun: (llm, run) => `Running cost (LLM ${llm} + ${run})`, rNet: 'Net per month',
+    rPay: 'Payback of rollout', rBe: 'Break-even volume', beUnit: (n) => n + ' tickets/month',
+    sens: [
+      () => '25% auto_draft (KB stays as is)',
+      (p) => p + '% auto_draft (current setting)',
+      () => '55% auto_draft (after KB gaps are filled)',
+      (p) => p + '%, but human_review saves nothing',
+    ],
+    lever: (n) => `The biggest lever is KB content, not the model: every 10 points of tickets moved from human_review to auto_draft is about ${n} h/month.`,
+    flip: (a, b, n, s) => `The case turns negative only if the real average saving is below ${a} min per ticket at $8/h (${b} min at $20/h), at ${n} tickets a month. The model now assumes ${s} min.`,
+  },
+  ru: {
+    locale: 'ru-RU',
+    title: 'Бизнес-кейс: ко-пилот поддержки',
+    tags: { a: 'Допущение', m: 'Измерено', c: 'Для контекста', e: 'Оценка' },
+    units: { '': '', min: 'мин', '%': '%', '$': '$', '$/h': '$/ч' },
+    s: {
+      brand: 'Ко-пилот поддержки · Бизнес-кейс',
+      back: '&larr; Назад к ко-пилоту',
+      q: 'Выгодно ли это при нашем объёме и в какой конфигурации?',
+      inputs: 'Исходные данные',
+      llmcfg: 'Конфигурация LLM {m}', llmcfgAria: 'Конфигурация LLM',
+      lg_m: '{m} из <code>eval/</code>',
+      lg_a: '{a} заменить реальными данными',
+      result: 'Результат', both: 'Оба сценария', h8: '$8/ч', h20: '$20/ч',
+      sensTitle: 'Чувствительность: чистая экономия в месяц',
+      s_case: 'Вариант', s_hours: 'Часов', s_n8: 'Чистая, $8/ч', s_n20: 'Чистая, $20/ч',
+      cfgTitle: 'Сравнение конфигураций',
+      c_h1: 'Конфигурация', c_h2: 'LLM, $ за обращение', c_h3: '$ в месяц при 10 тыс.',
+      c_h4: 'Качество на тестовом наборе (51 обращение, 2 прогона) {m}', c_h5: 'Вердикт',
+      a_cost: '$0,0002', b_cost: '$0,00095', c_cost: '<strong>$0,0044</strong>',
+      a_q: 'Маршрутизация 82% (первая версия промпта, повторно не прогоняли). Фразу «максимальный рычаг» модель читает как совет; 7 из 10 обычных отказов ушли людям.',
+      b_q: '0 нарушений, маршрутизация 96%, ссылки на источники 100%, strict abstain recall 93%, p95 3,0 с.',
+      c_q: '0 нарушений, маршрутизация 96%, ссылки на источники 100%, strict abstain recall 100%, p95 3,0 с. Набор реальных тем (20 обращений, 8 языков): 0 нарушений, маршрутизация 100%.',
+      a_v: 'Отклонена', b_v: 'Резерв', c_v: '<strong>Рекомендуется</strong>',
+      d_name: 'D. mini, эскалация на gpt-4.1', d_cost: '~$0,002 {e}',
+      d_q: 'Не строили. Все 14 непокрытых обращений остались непокрытыми для любой модели: отказы возникают из-за пробелов в базе знаний.',
+      d_v: 'Не стоит усложнения',
+      e_name: 'E. Фаза 2 (эмбеддинги, реранкер, очередь, хранилище аудита)', e_cost: '~$0,006 {e}',
+      e_month: '~$60 + ~$300 на инфраструктуру',
+      e_q: 'Понадобится, когда база знаний вырастет до десятков страниц. На 4 страницах пользы нет.',
+      e_v: 'Позже',
+      cfgNote: '<strong>Рекомендуем: gpt-4.1 для обоих шагов LLM, gpt-4.1-mini как автоматический резерв, ничего не отправляется автоматически.</strong> Счёт за LLM — около 1% от экономии, поэтому модель выбираем по качеству. B и C равны по маршрутизации и безопасности. C лучше по дисциплине отказов и задержке, разница — $34 в месяц.',
+      flipTitle: 'Что может изменить ответ',
+      pilot: 'Перед полным запуском измерьте реальную экономию в двухнедельном пилоте в режиме подсказок.',
+      mvaTitle: 'Измерено и предположено',
+      mva1: '{m} Стоимость LLM на обращение, результаты маршрутизации и безопасности (51 размеченное обращение, <code>eval/summary.json</code>).',
+      mva2: '{a} объёмы, время обработки, доли маршрутов, стоимость агента, расходы на работу и запуск. Тестовый набор намеренно сложный (31% auto_draft), поэтому его доли не берём для боевых.',
+      mva3: '{a} Доли маршрутов применяются ко всем обращениям. Обращения вне четырёх тем базы знаний в основном попадают в human_review, но всё равно экономят минуту на сортировке.',
+    },
+    f: {
+      tickets: 'Обращений в месяц', handleMin: 'Время обработки сейчас', autoPct: 'Доля auto_draft', declinePct: 'Доля decline',
+      reviewSaveMin: 'Экономия на human_review', rate: 'Стоимость агента', running: 'Расходы на работу в месяц', rollout: 'Разовый запуск',
+    },
+    numberSuffix: ' (число)',
+    perTicket: ' за обращение',
+    none: 'нет',
+    months: (x) => x + ' мес.',
+    mo: (x) => x + ' мес.',
+    verdictYes: (net, rate, pb) => `Да. Чистая экономия ${net} в месяц при $${rate}/ч, ${pb}${pb.endsWith('.') ? '' : '.'}`,
+    verdictNo: (net, rate) => `Нет, при таких настройках. Чистый результат ${net} в месяц при $${rate}/ч.`,
+    pbText: (x) => (x === null ? 'не окупается' : 'окупаемость ' + x + ' мес.'),
+    beText: (n) => (n === null ? 'при такой ставке не достигается' : n + ' обращений в месяц'),
+    vp: (hours, fte, be, ok) => `${hours} ч работы агентов экономится в месяц (${fte} FTE), безубыточность — ${be}. `
+      + (ok ? 'Рекомендуем: gpt-4.1 для обоих шагов LLM, gpt-4.1-mini как резерв, ничего не отправляется автоматически.' : 'Увеличьте долю auto_draft или объём либо проверьте исходные данные.'),
+    rateLabel: (rate, model) => `при $${rate}/ч, ${model}`,
+    kNet: 'Чистая экономия в месяц', kNetS: (g, c) => `экономия ${g} минус расходы ${c}`,
+    kHours: 'Сэкономлено часов', kHoursS: (fte, h) => `${fte} FTE при ${h} ч в месяц`,
+    kGross: 'Валовая экономия', kGrossS: (m) => `${m} мин экономии на обращение`,
+    kLlm: 'Расходы на LLM', kLlmS: (p) => `${p}% от экономии`,
+    kPay: 'Окупаемость', kPayS: (m) => `запуска за ${m}`,
+    kBe: 'Безубыточность', kBeS: 'обращений в месяц',
+    rGross: 'Валовая экономия', rRun: (llm, run) => `Расходы на работу (LLM ${llm} + ${run})`, rNet: 'Чистая экономия в месяц',
+    rPay: 'Окупаемость запуска', rBe: 'Объём безубыточности', beUnit: (n) => n + ' обращений в месяц',
+    sens: [
+      () => '25% auto_draft (база знаний без изменений)',
+      (p) => p + '% auto_draft (текущая настройка)',
+      () => '55% auto_draft (после заполнения пробелов в базе)',
+      (p) => p + '%, но human_review ничего не экономит',
+    ],
+    lever: (n) => `Главный рычаг — наполнение базы знаний, а не модель: каждые 10 п.п. обращений, переведённых из human_review в auto_draft, — около ${n} ч в месяц.`,
+    flip: (a, b, n, s) => `Расчёт уходит в минус, только если реальная средняя экономия ниже ${a} мин на обращение при $8/ч (${b} мин при $20/ч) и ${n} обращениях в месяц. Сейчас в модели заложено ${s} мин.`,
+  },
+};
+
 // Constants come from docs/business-case.md (assumptions, "Inputs" table) and
 // eval/summary.json (measured LLM cost per ticket). Change numbers here only.
 const INPUTS = {
@@ -264,38 +421,57 @@ if (typeof module !== 'undefined') module.exports = { INPUTS, MODELS, calc, sens
 if (typeof document !== 'undefined') (function () {
   const S = Object.assign({}, INPUTS);
   const $ = (id) => document.getElementById(id);
-  const money = (x) => (x < 0 ? '-$' : '$') + Math.abs(Math.round(x)).toLocaleString('en-US');
-  const num = (x) => Math.round(x).toLocaleString('en-US');
+  const LS_KEY = 'bc-lang';
+  let lang = 'en';
+  let D = I18N.en, F = null;
+  const mkFmt = (loc) => ({
+    i: new Intl.NumberFormat(loc, { maximumFractionDigits: 0 }),
+    d1: new Intl.NumberFormat(loc, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+    d2: new Intl.NumberFormat(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    p: new Intl.NumberFormat(loc, { maximumFractionDigits: 5 }),
+  });
+  const money = (x) => (x < 0 ? '-$' : '$') + F.i.format(Math.abs(Math.round(x)));
+  const num = (x) => F.i.format(Math.round(x));
   const FIELDS = [
-    { k: 'tickets', t: 'Tickets per month', min: 1000, max: 50000, step: 500, u: '', tag: 'a' },
-    { k: 'handleMin', t: 'Handle time today', min: 1, max: 20, step: 0.5, u: 'min', tag: 'a' },
-    { k: 'autoPct', t: 'auto_draft share', min: 0, max: 95, step: 1, u: '%', tag: 'a' },
-    { k: 'declinePct', t: 'decline share', min: 0, max: 30, step: 1, u: '%', tag: 'a' },
-    { k: 'reviewSaveMin', t: 'human_review saving', min: 0, max: 3, step: 0.25, u: 'min', tag: 'a' },
-    { k: 'rate', t: 'Agent cost', min: 5, max: 40, step: 1, u: '$/h', tag: 'a', presets: [8, 20] },
-    { k: 'running', t: 'Running cost per month', min: 0, max: 5000, step: 50, u: '$', tag: 'a' },
-    { k: 'rollout', t: 'One-time rollout', min: 0, max: 30000, step: 500, u: '$', tag: 'a' },
+    { k: 'tickets', min: 1000, max: 50000, step: 500, u: '', tag: 'a' },
+    { k: 'handleMin', min: 1, max: 20, step: 0.5, u: 'min', tag: 'a' },
+    { k: 'autoPct', min: 0, max: 95, step: 1, u: '%', tag: 'a' },
+    { k: 'declinePct', min: 0, max: 30, step: 1, u: '%', tag: 'a' },
+    { k: 'reviewSaveMin', min: 0, max: 3, step: 0.25, u: 'min', tag: 'a' },
+    { k: 'rate', min: 5, max: 40, step: 1, u: '$/h', tag: 'a', presets: [8, 20] },
+    { k: 'running', min: 0, max: 5000, step: 50, u: '$', tag: 'a' },
+    { k: 'rollout', min: 0, max: 30000, step: 500, u: '$', tag: 'a' },
   ];
-  const TAGS = { a: ['a', 'assumption'], m: ['m', 'measured'], c: ['c', 'context only'] };
+  const TAG_CLASS = { a: 'a', m: 'm', c: 'c', e: 'c' };
+  const tagHtml = (k) => `<span class="tag ${TAG_CLASS[k]}">${D.tags[k]}</span>`;
+  const withTags = (str) => str.replace(/\{([maec])\}/g, (_, k) => tagHtml(k));
+  const stripTags = (str) => str.replace(/<[^>]*>/g, '').replace(/\{[maec]\}/g, '').trim();
+
+  function applyStatic() {
+    document.documentElement.lang = lang;
+    document.title = D.title;
+    document.querySelectorAll('[data-i18n]').forEach((el) => { el.innerHTML = withTags(D.s[el.dataset.i18n]); });
+    document.querySelectorAll('[data-i18n-aria]').forEach((el) => el.setAttribute('aria-label', stripTags(D.s[el.dataset.i18nAria])));
+    document.querySelectorAll('.lang button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+  }
 
   function build() {
     $('inputs').innerHTML = FIELDS.map((f) => {
-      const [c, w] = TAGS[f.tag];
+      const t = D.f[f.k], u = D.units[f.u];
       const pre = f.presets
-        ? '<div class="presets">' + f.presets.map((v) => `<button type="button" data-p="${v}">$${v}/h</button>`).join('') + '</div>'
+        ? '<div class="presets">' + f.presets.map((v) => `<button type="button" data-p="${v}">$${v}${D.units['$/h'].slice(1)}</button>`).join('') + '</div>'
         : '';
-      return `<div class="field"><div class="lab"><span class="t">${f.t} <span class="tag ${c}">${w}</span></span></div>
-        <div class="ctl"><input type="range" id="r-${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" aria-label="${f.t}">
-        <input type="number" id="n-${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" aria-label="${f.t} (number)"><span class="unit">${f.u}</span></div>${pre}</div>`;
+      return `<div class="field"><div class="lab"><span class="t">${t} ${tagHtml(f.tag)}</span></div>
+        <div class="ctl"><input type="range" id="r-${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" aria-label="${t}">
+        <input type="number" id="n-${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" aria-label="${t}${D.numberSuffix}"><span class="unit">${u}</span></div>${pre}</div>`;
     }).join('');
-    $('model').innerHTML = Object.keys(MODELS).map((m) => `<option value="${m}">${m} · $${MODELS[m]}/ticket</option>`).join('');
+    $('model').innerHTML = Object.keys(MODELS).map((m) => `<option value="${m}">${m} · $${F.p.format(MODELS[m])}${D.perTicket}</option>`).join('');
     FIELDS.forEach((f) => {
       const sync = (v) => { v = parseFloat(v); if (isNaN(v)) return; S[f.k] = Math.min(f.max, Math.max(f.min, v)); render(); };
       $('r-' + f.k).addEventListener('input', (e) => sync(e.target.value));
       $('n-' + f.k).addEventListener('input', (e) => sync(e.target.value));
     });
     document.querySelectorAll('[data-p]').forEach((b) => b.addEventListener('click', () => { S.rate = +b.dataset.p; render(); }));
-    $('model').addEventListener('change', (e) => { S.model = e.target.value; render(); });
   }
 
   function render() {
@@ -311,45 +487,73 @@ if (typeof document !== 'undefined') (function () {
     const ok = r.net > 0;
     const v = $('verdict');
     v.classList.toggle('no', !ok);
-    const pb = r.payback === null ? 'no payback' : 'payback ' + r.payback.toFixed(1) + ' months';
-    $('vh').textContent = ok
-      ? `Yes. Net ${money(r.net)} a month at $${S.rate}/h, ${pb}.`
-      : `Not at these settings. Net ${money(r.net)} a month at $${S.rate}/h.`;
-    const be = r.breakEven === null ? 'never at this rate' : num(round10(r.breakEven)) + ' tickets/month';
-    $('vp').textContent = `${num(r.hours)} agent-hours saved a month (${r.fte.toFixed(1)} FTE), break-even at ${be}. `
-      + (ok ? 'Recommended: gpt-4.1 for both LLM steps, gpt-4.1-mini as fallback, nothing auto-sent.' : 'Raise the auto_draft share or the volume, or check the inputs.');
-    $('rate-label').textContent = `at $${S.rate}/h, ${S.model}`;
+    const pb = D.pbText(r.payback === null ? null : F.d1.format(r.payback));
+    $('vh').textContent = ok ? D.verdictYes(money(r.net), S.rate, pb) : D.verdictNo(money(r.net), S.rate);
+    const be = D.beText(r.breakEven === null ? null : num(round10(r.breakEven)));
+    $('vp').textContent = D.vp(num(r.hours), F.d1.format(r.fte), be, ok);
+    $('rate-label').textContent = D.rateLabel(S.rate, S.model);
 
     const kp = (l, val, s, cls) => `<div class="kpi ${cls || ''}"><div class="l">${l}</div><div class="v num">${val}</div><div class="s">${s}</div></div>`;
     $('kpis').innerHTML = [
-      kp('Net per month', money(r.net), `gross ${money(r.gross)} minus ${money(r.llm + S.running)}`, ok ? 'hero' : 'neg'),
-      kp('Saved hours', num(r.hours), `${r.fte.toFixed(1)} FTE at ${S.fteHours} h/month`),
-      kp('Gross saving', money(r.gross), `${r.savedMin.toFixed(1)} min saved per ticket`),
-      kp('LLM cost', money(r.llm), `${(r.gross > 0 ? r.llm / r.gross * 100 : 0).toFixed(1)}% of the saving`),
-      kp('Payback', r.payback === null ? 'none' : r.payback.toFixed(1) + ' mo', `of ${money(S.rollout)} rollout`),
-      kp('Break-even', r.breakEven === null ? 'none' : num(round10(r.breakEven)), 'tickets per month'),
+      kp(D.kNet, money(r.net), D.kNetS(money(r.gross), money(r.llm + S.running)), ok ? 'hero' : 'neg'),
+      kp(D.kHours, num(r.hours), D.kHoursS(F.d1.format(r.fte), S.fteHours)),
+      kp(D.kGross, money(r.gross), D.kGrossS(F.d1.format(r.savedMin))),
+      kp(D.kLlm, money(r.llm), D.kLlmS(F.d1.format(r.gross > 0 ? r.llm / r.gross * 100 : 0))),
+      kp(D.kPay, r.payback === null ? D.none : D.mo(F.d1.format(r.payback)), D.kPayS(money(S.rollout))),
+      kp(D.kBe, r.breakEven === null ? D.none : num(round10(r.breakEven)), D.kBeS),
     ].join('');
 
     const two = S.rates.map((rt) => calc(S, { rate: rt }));
     const row = (l, f) => `<tr><td>${l}</td>${two.map((x) => `<td class="r">${f(x)}</td>`).join('')}</tr>`;
     $('scen').innerHTML = [
-      row('Gross saving', (x) => money(x.gross)),
-      row(`Running cost (LLM ${money(two[0].llm)} + ${money(S.running)})`, (x) => money(x.llm + S.running)),
-      row('<strong>Net per month</strong>', (x) => `<strong>${money(x.net)}</strong>`),
-      row('Payback of rollout', (x) => (x.payback === null ? 'none' : x.payback.toFixed(1) + ' months')),
-      row('Break-even volume', (x) => (x.breakEven === null ? 'none' : num(round10(x.breakEven)) + ' tickets/month')),
+      row(D.rGross, (x) => money(x.gross)),
+      row(D.rRun(money(two[0].llm), money(S.running)), (x) => money(x.llm + S.running)),
+      row(`<strong>${D.rNet}</strong>`, (x) => `<strong>${money(x.net)}</strong>`),
+      row(D.rPay, (x) => (x.payback === null ? D.none : D.months(F.d1.format(x.payback)))),
+      row(D.rBe, (x) => (x.breakEven === null ? D.none : D.beUnit(num(round10(x.breakEven))))),
     ].join('');
 
-    $('sens').innerHTML = sensitivity(S).map((s) =>
-      `<tr><td>${s.label}</td><td class="r">${num(s.hours)}</td><td class="r">${money(round10(s.net8))}</td><td class="r">${money(round10(s.net20))}</td></tr>`).join('');
-    $('lever').textContent = `The biggest lever is KB content, not the model: every 10 points of tickets moved from human_review to auto_draft is about ${num(S.tickets * 0.1 * (S.autoMin < S.handleMin - S.reviewSaveMin ? (S.handleMin - S.reviewSaveMin - S.autoMin) : 0) / 60)} h/month.`;
+    $('sens').innerHTML = sensitivity(S).map((s, i) =>
+      `<tr><td>${D.sens[i](S.autoPct)}</td><td class="r">${num(s.hours)}</td><td class="r">${money(round10(s.net8))}</td><td class="r">${money(round10(s.net20))}</td></tr>`).join('');
+    $('lever').textContent = D.lever(num(S.tickets * 0.1 * (S.autoMin < S.handleMin - S.reviewSaveMin ? (S.handleMin - S.reviewSaveMin - S.autoMin) : 0) / 60));
 
     // saving per ticket at which net = 0 at the current volume
     const flip = (rt) => (S.running / S.tickets + MODELS[S.model]) / rt * 60;
-    $('flip').textContent = `The case turns negative only if the real average saving is below ${flip(8).toFixed(2)} min per ticket at $8/h (${flip(20).toFixed(2)} min at $20/h), at ${num(S.tickets)} tickets a month. The model now assumes ${r.savedMin.toFixed(1)} min.`;
+    $('flip').textContent = D.flip(F.d2.format(flip(8)), F.d2.format(flip(20)), num(S.tickets), F.d1.format(r.savedMin));
   }
-  build();
-  render();
+
+  function setLang(l, persist) {
+    lang = I18N[l] ? l : 'en';
+    D = I18N[lang];
+    F = mkFmt(D.locale);
+    if (persist) {
+      try { localStorage.setItem(LS_KEY, lang); } catch (e) { /* storage unavailable */ }
+      try {
+        const u = new URL(location.href);
+        u.searchParams.set('lang', lang);
+        history.replaceState(null, '', u);
+      } catch (e) { /* ignore */ }
+    }
+    applyStatic();
+    build();
+    render();
+  }
+
+  function initialLang() {
+    try {
+      const q = new URLSearchParams(location.search).get('lang');
+      if (q === 'ru' || q === 'en') return q;
+    } catch (e) { /* ignore */ }
+    try {
+      const saved = localStorage.getItem(LS_KEY);
+      if (saved === 'ru' || saved === 'en') return saved;
+    } catch (e) { /* ignore */ }
+    return 'en';
+  }
+
+  $('model').addEventListener('change', (e) => { S.model = e.target.value; render(); });
+  document.querySelectorAll('.lang button').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang, true)));
+  setLang(initialLang(), false);
 })();
 </script>
 </body>
