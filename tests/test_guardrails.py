@@ -139,3 +139,31 @@ def test_scan_reply_allows_conditional_outcomes(text: str) -> None:
 )
 def test_fixed_templates_pass_scan_reply(text: str) -> None:
     assert scan_reply(text) == []
+
+
+RESIDUAL = [
+    # A conditional or time word earlier in the sentence does not make a statement hypothetical.
+    "After our review your account has been unblocked.",
+    "When we checked your file your documents were approved.",
+    "If you were wondering your withdrawal was approved.",
+    "Good news if you were waiting your complaint was resolved in your favour.",
+    "Tras la revisión su cuenta ha sido desbloqueada.",
+    "Después de revisar su caso su retiro fue aprobado.",
+    "Setelah ditinjau verifikasi Anda telah disetujui.",
+    "بعد المراجعة تمت الموافقة على التحقق الخاص بك",
+    # Plain statements without "has been".
+    "We approved your verification.",
+    "Your documents are approved.",
+    "We suggest buying gold now.",
+    "Your account is active again.",
+]
+
+
+@pytest.mark.parametrize("text", RESIDUAL)
+def test_scan_reply_catches_outcomes_behind_conditional_or_time_words(text: str) -> None:
+    assert scan_reply(text)
+
+
+def test_time_word_with_past_outcome_is_not_excused_even_with_a_comma() -> None:
+    assert scan_reply("After our review your account has been unblocked, so you can log in.")
+    assert not scan_reply("When your withdrawal is approved, you will get an e-mail.")

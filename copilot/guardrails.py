@@ -342,7 +342,8 @@ def courtesy_violations(text: str) -> list[str]:
 
 ADVICE_IN_REPLY = _rx(
     r"\b(i|we) (would )?(recommend|suggest|advise)( that)?( you)?( to)? "
-    r"(buy|sell|go long|go short|trade|use|choose|pick|open|enter|start with)\b",
+    r"(buy|sell|go long|go short|trade|use|choose|pick|open|enter|start with|buying|selling"
+    r"|going long|going short|trading|using|choosing|picking|opening|entering|starting with)\b",
     r"\byou should (buy|sell|go long|go short|use\b.{0,20}\bleverage|trade|invest|enter)",
     r"\b(good|great|right|best) (time|moment|idea) to (buy|sell|trade|enter|invest)",
     r"\b(likely|expected) to (rise|fall|go up|go down|reach|hit)\b",
@@ -365,7 +366,12 @@ ADVICE_IN_REPLY = _rx(
 
 OUTCOME_PROMISE = _rx(
     r"\byour (account|verification|withdrawal|deposit|refund|documents?|complaint)\b.{0,20}"
-    r"\b(has been|is|will be)\b.{0,10}\b(approved|unblocked|unlocked|reinstated|refunded|resolved)\b",
+    r"\b(has been|have been|is|are|will be)\b.{0,10}\b(approved|unblocked|unlocked|reinstated"
+    r"|reactivated|restored|refunded|resolved)\b",
+    r"\b(is|are|was|were|has been|have been|will be)\s+(active|accessible|available|working|open)"
+    r"\s+again\b",
+    r"\bwe\s+(approved|rejected|declined|resolved|unblocked|unfroze|refunded|reversed|reinstated"
+    r"|reactivated)\b",
     r"\bwe (will|'ll|can) (refund|compensate|reimburse|unblock|unlock|approve|reverse)\b",
     r"\b(will|won'?t|will not|would not|wouldn'?t) be (closed|terminated|suspended|blocked|frozen)\b",
     r"\bguarantee",
@@ -391,13 +397,32 @@ OUTCOME_PROMISE = _rx(
 # Core stems only outside English and Russian: languages without a list here (Thai,
 # Vietnamese, Malay, Swahili...) rely on the prompt, the classifier, the agent and the eval.
 
-# A conditional earlier in the same clause makes an outcome hypothetical: "once your withdrawal
-# is approved, ...", "if your documents were rejected, ...", "si su retiro es aprobado".
+# An outcome is hypothetical only in a subordinate clause: a conditional word earlier in the
+# same clause AND the sentence goes on after a comma ("If your documents were rejected, you
+# will ..."). "When we checked your file your documents were approved." is a statement.
 _CONDITIONAL = re.compile(
-    r"\b(once|when|after|if|until|as soon as|una vez|cuando|si|tras|después de|setelah|jika"
-    r"|apabila|bila|ketika)\b[^.!?;:,\n]{0,40}$|(عندما|إذا|اذا|بعد|عند)[^.!?؟،;:\n]{0,40}$",
+    r"\b(?P<w>once|when|after|if|until|as soon as|una vez|cuando|si|tras|después de|setelah"
+    r"|jika|apabila|bila|ketika)\b[^.!?;:,\n]{0,40}$"
+    r"|(?P<a>عندما|إذا|اذا|بعد|عند)[^.!?؟،;:\n]{0,40}$",
     re.IGNORECASE,
 )
+_CLAUSE_GOES_ON = re.compile(r"[^.!?؟।\n]*?[,،]")
+# Time words never make a reported decision hypothetical: "after our review your account has
+# been unblocked" states that it happened.
+_TEMPORAL = {"after", "when", "tras", "después de", "setelah", "بعد", "عند"}
+_PAST = re.compile(
+    r"\b(was|were|has been|have been|had been|fue|fueron|ha sido|han sido|telah|sudah)\b|تمت|تم\s",
+    re.IGNORECASE,
+)
+
+
+def _hypothetical(text: str, m: re.Match[str]) -> bool:
+    start = max(0, m.start() - 60)
+    cond = _CONDITIONAL.search(text[start : m.start()])
+    if cond is None or not _CLAUSE_GOES_ON.match(text, m.end()):
+        return False
+    word = (cond.group("w") or cond.group("a")).lower()
+    return not (word in _TEMPORAL and _PAST.search(text[start + cond.start() : m.end()]))
 
 
 def _promises(text: str) -> list[str]:
@@ -405,7 +430,7 @@ def _promises(text: str) -> list[str]:
     found: list[str] = []
     for p in OUTCOME_PROMISE:
         for m in p.finditer(text):
-            if not _CONDITIONAL.search(text[max(0, m.start() - 60) : m.start()]):
+            if not _hypothetical(text, m):
                 found.append(m.group(0))
                 break
     return found
