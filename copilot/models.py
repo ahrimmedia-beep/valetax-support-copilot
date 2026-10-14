@@ -19,6 +19,7 @@ Urgency = Literal["low", "normal", "high", "critical"]
 Sentiment = Literal["negative", "neutral", "positive"]
 Route = Literal["auto_draft", "human_review", "decline_trading_advice"]
 SensitiveTopic = Literal["complaint", "kyc_aml", "account_blocked", "legal_threat", "fraud"]
+SentenceKind = Literal["fact", "greeting", "closing", "handoff"]
 
 URGENCY_ORDER: dict[Urgency, int] = {"low": 0, "normal": 1, "high": 2, "critical": 3}
 
@@ -78,14 +79,30 @@ class LLMCitation(BaseModel):
     quote: str = Field(description="Exact sentence copied character-for-character from the source")
 
 
+class LLMSentence(BaseModel):
+    """One sentence of the drafted reply and the citations that back it."""
+
+    text: str = Field(description="One sentence of the reply, in the customer's language")
+    kind: SentenceKind = Field(
+        description="fact for anything taken from the sources; greeting, closing or handoff "
+        "(a colleague will follow up) for courtesy sentences that state no facts"
+    )
+    cites: list[int] = Field(
+        description="0-based indexes into citations that support this sentence; at least one "
+        "for a fact, empty for every other kind"
+    )
+
+
 class LLMDraft(BaseModel):
     """What the LLM returns for step 4 (also the schema sent to the model)."""
 
     covered: Literal["full", "partial", "none"] = Field(
         description="Do the sources answer the customer's questions: full, partial or none"
     )
-    reply: str = Field(description="Reply to the customer in their language; empty if covered=none")
     citations: list[LLMCitation]
+    sentences: list[LLMSentence] = Field(
+        description="The reply to the customer, sentence by sentence; empty if covered=none"
+    )
 
 
 class Citation(BaseModel):
@@ -93,9 +110,6 @@ class Citation(BaseModel):
     page: str
     heading: str
     quote: str
-
-
-SentenceKind = Literal["fact", "greeting", "closing", "handoff"]
 
 
 class DraftSentence(BaseModel):

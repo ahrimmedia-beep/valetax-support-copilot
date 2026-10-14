@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copilot.draft import make_draft, normalize, numbers_in, ungrounded_numbers, verify_citations
 from copilot.llm import FakeProvider, LLMError
-from copilot.models import LLMCitation, LLMDraft, ScoredChunk
+from copilot.models import LLMCitation, LLMDraft, LLMSentence, ScoredChunk
 from copilot.retrieval import BM25Index
 from copilot.templates import holding_reply
 
@@ -13,10 +13,17 @@ def _retrieved(index: BM25Index) -> list[ScoredChunk]:
     return index.search(["minimum deposit amount"])
 
 
+def _fact(text: str) -> list[LLMSentence]:
+    """The whole reply as one fact sentence backed by citation 0."""
+    return [LLMSentence(text=text, kind="fact", cites=[0])]
+
+
 def _draft_with(reply: str, quote: str = MIN_DEPOSIT, chunk_id: str = "how-to-deposit#faq-1"):
     def responder(system: str, user: str) -> LLMDraft:
         return LLMDraft(
-            covered="full", reply=reply, citations=[LLMCitation(chunk_id=chunk_id, quote=quote)]
+            covered="full",
+            citations=[LLMCitation(chunk_id=chunk_id, quote=quote)],
+            sentences=_fact(reply),
         )
 
     return FakeProvider({LLMDraft: responder})
@@ -62,11 +69,14 @@ def test_grounded_draft_is_used(index: BM25Index) -> None:
     draft = _run(_draft_with("The minimum deposit starts from 8 USD."), index)
     assert not draft.abstained and draft.citations[0].quote == MIN_DEPOSIT
     assert draft.citations_valid == draft.citations_proposed == 1
+    assert draft.reply == "The minimum deposit starts from 8 USD."
+    assert [(s.kind, s.chunk_ids) for s in draft.sentences] == [("fact", ["how-to-deposit#faq-1"])]
 
 
 def test_invented_number_forces_abstain(index: BM25Index) -> None:
     draft = _run(_draft_with("The minimum deposit is 8 USD and it is credited in 2 hours."), index)
-    assert draft.abstained and draft.problems == ["ungrounded_number: 2"]
+    assert draft.abstained
+    assert draft.problems == ["ungrounded_number: 2", "sentence_number_not_in_its_source: 2"]
     assert draft.reply == holding_reply("en")
 
 
@@ -82,7 +92,7 @@ def test_advice_in_reply_forces_abstain(index: BM25Index) -> None:
 
 def test_not_covered_abstains(index: BM25Index) -> None:
     provider = FakeProvider(
-        {LLMDraft: lambda s, u: LLMDraft(covered="none", reply="", citations=[])}
+        {LLMDraft: lambda s, u: LLMDraft(covered="none", citations=[], sentences=[])}
     )
     assert _run(provider, index).problems == ["kb_not_covered"]
 
@@ -112,8 +122,8 @@ def _docs_run(index: BM25Index, reply: str, ticket: str):
     def responder(system: str, user: str) -> LLMDraft:
         return LLMDraft(
             covered="full",
-            reply=reply,
             citations=[LLMCitation(chunk_id="how-to-open-an-account#faq-4", quote=DOCS)],
+            sentences=_fact(reply),
         )
 
     retrieved = index.search(["documents needed to open an account"])
@@ -129,7 +139,11 @@ def test_invented_document_type_forces_abstain(index: BM25Index) -> None:
         "You need a proof of identification, such as a passport or a driving licence.",
         "Is a driving licence accepted?",
     )
-    assert draft.abstained and draft.problems == ["ungrounded_term: passport"]
+    assert draft.abstained
+    assert draft.problems == [
+        "ungrounded_term: passport",
+        "sentence_term_not_in_its_source: passport",
+    ]
 
 
 def test_term_the_kb_never_mentions_makes_the_draft_partial(index: BM25Index) -> None:

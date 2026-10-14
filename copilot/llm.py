@@ -17,7 +17,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from copilot.models import Category, Classification, LLMCitation, LLMDraft, Usage
+from copilot.models import Category, Classification, LLMCitation, LLMDraft, LLMSentence, Usage
 
 # USD per 1M tokens (input, output). List prices at the time of writing; check before use.
 PRICES: dict[str, tuple[float, float]] = {
@@ -142,17 +142,20 @@ def _fake_classify(system: str, user: str) -> Classification:
 
 
 def _fake_draft(system: str, user: str) -> LLMDraft:
-    """Answers with the first sentence of the first source, quoting it verbatim."""
+    """A greeting, then the first sentence of the first source as a fact citing it verbatim."""
     m = re.search(r'<source id="([^"]+)"[^>]*>\n(.*?)\n</source>', user, re.S)
     if not m:
-        return LLMDraft(covered="none", reply="", citations=[])
+        return LLMDraft(covered="none", citations=[], sentences=[])
     chunk_id, body = m.group(1), m.group(2)
     answer = body.split("\n", 1)[-1]
     sentence = re.split(r"(?<=[.!?])\s", answer.strip())[0]
     return LLMDraft(
         covered="full",
-        reply=f"Thank you for reaching out. {sentence}",
         citations=[LLMCitation(chunk_id=chunk_id, quote=sentence)],
+        sentences=[
+            LLMSentence(text="Thank you for reaching out.", kind="greeting", cites=[]),
+            LLMSentence(text=sentence, kind="fact", cites=[0]),
+        ],
     )
 
 

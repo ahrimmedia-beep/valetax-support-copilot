@@ -14,7 +14,11 @@ def test_covered_question_is_auto_drafted_with_citation() -> None:
     assert r.decision.route == "auto_draft"
     assert "8 USD" in r.draft.reply
     assert r.draft.citations[0].page == "https://valetax.com/how-to-deposit/"
-    assert r.kb_version and r.prompt_version.startswith("v1-") and len(r.input_sha256) == 64
+    assert r.kb_version and r.prompt_version.startswith("v2-") and len(r.input_sha256) == 64
+    assert r.prompt_version.endswith("-sentences")
+    assert [s.kind for s in r.draft.sentences] == ["greeting", "fact"]
+    assert r.draft.sentences[1].chunk_ids == ["how-to-deposit#faq-1"]
+    assert r.draft.reply == " ".join(s.text for s in r.draft.sentences)
 
 
 def test_trading_advice_is_declined_without_a_draft_call() -> None:

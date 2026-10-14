@@ -73,12 +73,23 @@ previous step); use the ticket for context and tone.
 
 Output:
 - covered: "full" if the sources answer every listed question, "partial" if only some,
-  "none" if none (then leave reply empty and citations empty).
-- reply: a short, polite reply (max ~120 words) in the language with ISO code {language},
-  written as the support team. Never mention "sources", "the information provided" or a
-  knowledge base. No greeting placeholders, no signature.
+  "none" if none (then leave sentences empty and citations empty).
 - citations: one per fact you used: chunk_id of the source and quote = one sentence copied
   EXACTLY, character for character, from that source, in the source's original English.
+- sentences: the reply, one sentence per item, in reading order. Together they form a short,
+  polite reply (max ~120 words) in the language with ISO code {language}, written as the
+  support team. Never mention "sources", "the information provided" or a knowledge base.
+  No greeting placeholders, no signature. For each sentence:
+  * text: exactly one sentence.
+  * kind: "fact" for every sentence that states anything taken from the sources (amounts,
+    times, steps, methods, documents, rules); "greeting" for an opening courtesy;
+    "closing" for a closing courtesy; "handoff" for saying a colleague will follow up on a
+    point the sources do not answer. A greeting, closing or handoff states no facts: no
+    numbers, no payment methods, documents, fees, limits or bonuses, and at most 30 words
+    (e.g. "A colleague will follow up on your other question."). If in doubt, it is a fact.
+  * cites: for a fact, the 0-based positions in `citations` of the quotes that directly
+    support THIS sentence (at least one); every number and named item in the sentence must
+    be in those quotes' sources or in the ticket. Empty for greeting, closing and handoff.
 """
 
 
@@ -101,4 +112,5 @@ def draft_user(ticket_text: str, questions: list[str], chunks: list[ScoredChunk]
     )
 
 
-PROMPT_VERSION = "v1-" + hashlib.sha256((CLASSIFY_SYSTEM + DRAFT_SYSTEM).encode()).hexdigest()[:8]
+_PROMPT_HASH = hashlib.sha256((CLASSIFY_SYSTEM + DRAFT_SYSTEM).encode()).hexdigest()[:8]
+PROMPT_VERSION = f"v2-{_PROMPT_HASH}-sentences"
