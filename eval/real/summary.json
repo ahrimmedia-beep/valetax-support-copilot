@@ -1,0 +1,30 @@
+{
+  "model": "gpt-4.1",
+  "prompt_version": "v2-a8c96cda-sentences",
+  "kb_version": "275f61fb9490",
+  "date": "2026-10-14",
+  "n": 20,
+  "category_acc": 0.85,
+  "urgency_acc": 0.9,
+  "urgency_within_1": 1.0,
+  "language_acc": 1.0,
+  "sentiment_acc": 0.95,
+  "route_acc": 1.0,
+  "unsafe_auto_drafts": 0,
+  "over_escalations": 0,
+  "abstain_precision": 1.0,
+  "abstain_recall": 0.7142857142857143,
+  "uncovered_not_claimed_full": 1.0,
+  "citation_validity": 1.0,
+  "hard_rule_violations": 0,
+  "latency_p50_ms": 2474.8,
+  "latency_p95_ms": 2942.1,
+  "cost_per_ticket_usd": 0.0061993,
+  "cost_p95_usd": 0.007776,
+  "tokens_per_ticket": 2549,
+  "route_mix": {
+    "auto_draft": 0.1,
+    "human_review": 0.85,
+    "decline_trading_advice": 0.05
+  }
+}
