@@ -316,8 +316,25 @@ COURTESY_FORBIDDEN = _rx(
 )
 
 
+# Fixed courtesy phrases that contain a time word but state no fact ("Have a nice day").
+# They are removed before COURTESY_FORBIDDEN runs, so "today" elsewhere in the same sentence
+# ("credited today") is still caught.
+COURTESY_ALLOWED = _rx(
+    r"\b(nice|great|good|wonderful|lovely) day\b",
+    r"\b(contacting|reaching out to) us today\b",
+    r"\bhelp you today\b",
+    r"хорошего (дня|вечера)",
+    r"\bbuen(os)? d[ií]as?\b",
+    r"\bsemoga hari\b",
+    r"طاب يومك|يوم[اًا]+ سعيد[اًا]*",
+    r"दिन शुभ",
+)
+
+
 def courtesy_violations(text: str) -> list[str]:
     """Timeline, price or promise words found in a sentence that claims to be a courtesy."""
+    for p in COURTESY_ALLOWED:
+        text = p.sub(" ", text)
     return _matches(COURTESY_FORBIDDEN, text)
 
 

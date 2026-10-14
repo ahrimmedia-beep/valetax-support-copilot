@@ -204,7 +204,33 @@ HANDOFFS = [
     "A colleague will follow up on your other question.",
     "One of our colleagues will follow up on the rest of your message.",
     "Feel free to contact us if you have any other questions.",
+    # Fixed courtesy phrases that contain a time word but state no fact.
+    "Have a nice day.",
+    "Have a great day!",
+    "How can I help you today?",
+    "Thank you for contacting us today.",
+    "Хорошего дня!",
+    "¡Que tenga un buen día!",
+    "Semoga hari Anda menyenangkan.",
+    "طاب يومك.",
+    "आपका दिन शुभ हो।",
 ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Thank you for contacting us today, your deposit will be credited today.",
+        "Have a nice day, your withdrawal is processed today.",
+        "Your request will be processed today.",
+        "Have a great day, a colleague will reply within two days.",
+        "Хорошего дня, деньги придут завтра.",
+    ],
+)
+def test_courtesy_phrase_does_not_hide_a_promise(text: str) -> None:
+    """Allowed phrases are removed before matching; time words outside them still count."""
+    draft = _run([fact(SKRILL, 0), LLMSentence(text=text, kind="closing", cites=[])])
+    assert draft.abstained and draft.problems == [f"fact_disguised_as_closing: {text}"]
 
 
 @pytest.mark.parametrize("text", HANDOFFS)
