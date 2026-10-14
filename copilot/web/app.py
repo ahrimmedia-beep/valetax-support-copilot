@@ -8,15 +8,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import threading
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -32,6 +34,9 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 AUDIO_EXTENSIONS = {".webm", ".mp3", ".wav", ".m4a", ".ogg"}
 MAX_TICKET_CHARS = 5000
+MULTIPART_OVERHEAD = 64 * 1024
+SPEECH_DOWN = "speech service unavailable"
+log = logging.getLogger(__name__)
 
 
 class TriageRequest(BaseModel):
@@ -52,11 +57,11 @@ class TtsRequest(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    ticket_id: str
-    input_sha256: str
-    route: str
+    ticket_id: str = Field(max_length=100)
+    input_sha256: str = Field(max_length=64, pattern=r"^[0-9a-fA-F]{1,64}$")
+    route: str = Field(max_length=40)
     action: Literal["sent_as_is", "edited", "rejected"]
-    final_text: str | None = None
+    final_text: str | None = Field(default=None, max_length=10000)
 
 
 def _wants_openai(env_value: str | None) -> bool:
@@ -82,7 +87,12 @@ def default_speech() -> SpeechProvider:
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
-    rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    rows: list[object] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue  # a torn or foreign line must not break the stats
     return [r for r in rows if isinstance(r, dict)]
 
 
@@ -135,7 +145,9 @@ def create_app(
     eval_dir: Path | None = None,
 ) -> FastAPI:
     provider = provider or default_provider()
-    speech = speech or default_speech()
+    if speech is None:
+        # An explicit fake LLM must never pull in the paid speech API.
+        speech = FakeSpeech() if isinstance(provider, FakeProvider) else default_speech()
     data_dir = data_dir or ROOT / "data"
     static_dir = static_dir or STATIC_DIR
     eval_dir = eval_dir or ROOT / "eval"
@@ -144,6 +156,19 @@ def create_app(
     lock = threading.Lock()
 
     app = FastAPI(title="Support co-pilot")
+
+    @app.middleware("http")
+    async def limit_voice_upload(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # Checked before the multipart body is parsed (and spooled to disk).
+        if request.url.path == "/api/voice" and request.method == "POST":
+            length = request.headers.get("content-length")
+            if length is None:
+                return JSONResponse({"detail": "Content-Length required"}, status_code=411)
+            if not length.isdigit() or int(length) > MAX_AUDIO_BYTES + MULTIPART_OVERHEAD:
+                return JSONResponse({"detail": "audio is larger than 10 MB"}, status_code=413)
+        return await call_next(request)
 
     def page(name: str) -> FileResponse:
         path = static_dir / name
@@ -183,14 +208,14 @@ def create_app(
         return copilot.triage(ticket).model_dump(mode="json")
 
     @app.post("/api/voice")
-    async def voice(
+    def voice(
         audio: UploadFile = File(...),  # noqa: B008
         language: str | None = Form(None),
     ) -> dict[str, object]:
         name = audio.filename or "audio.webm"
         if Path(name).suffix.lower() not in AUDIO_EXTENSIONS:
             raise HTTPException(422, f"unsupported audio type, use {sorted(AUDIO_EXTENSIONS)}")
-        data = await audio.read(MAX_AUDIO_BYTES + 1)
+        data = audio.file.read(MAX_AUDIO_BYTES + 1)
         if len(data) > MAX_AUDIO_BYTES:
             raise HTTPException(413, "audio is larger than 10 MB")
         if not data:
@@ -198,7 +223,8 @@ def create_app(
         try:
             transcript = speech.transcribe(data, name, language or None)
         except SpeechError as exc:
-            raise HTTPException(503, str(exc)) from exc
+            log.error("speech error: %s", exc)
+            raise HTTPException(503, SPEECH_DOWN) from exc
         text = transcript.text.strip()
         if not text:
             raise HTTPException(422, "no speech recognised in the audio")
@@ -216,7 +242,8 @@ def create_app(
         try:
             audio = speech.synthesize(req.text, req.language)
         except SpeechError as exc:
-            raise HTTPException(503, str(exc)) from exc
+            log.error("speech error: %s", exc)
+            raise HTTPException(503, SPEECH_DOWN) from exc
         return Response(content=audio, media_type="audio/mpeg")
 
     @app.post("/api/feedback")
@@ -230,7 +257,8 @@ def create_app(
 
     @app.get("/api/feedback/stats")
     def feedback_stats() -> dict[str, int]:
-        rows = _read_jsonl(feedback_path)
+        with lock:
+            rows = _read_jsonl(feedback_path)
         counts = {
             k: sum(1 for r in rows if r.get("action") == k)
             for k in ("sent_as_is", "edited", "rejected")

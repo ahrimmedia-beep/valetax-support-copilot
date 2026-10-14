@@ -63,7 +63,11 @@ def _verify_detail(draft: Draft, ran: bool) -> str:
     if not ran:
         return "skipped: nothing to verify"
     if draft.problems:
-        return f"failed: {draft.problems[0]}"
+        first = draft.problems[0]
+        # These stop the draft before any check runs.
+        if first.split(":", 1)[0] in {"kb_not_covered", "low_retrieval_score", "llm_error"}:
+            return f"skipped: abstained ({first})"
+        return f"failed: {first}"
     return "all checks passed"
 
 

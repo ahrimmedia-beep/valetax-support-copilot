@@ -150,11 +150,11 @@ def test_tts(client: TestClient) -> None:
 def test_tts_speech_error_is_503(tmp_path: Path) -> None:
     class Broken(FakeSpeech):
         def synthesize(self, text: str, language: str) -> bytes:
-            raise SpeechError("down")
+            raise SpeechError("down sk-secret")
 
     app = create_app(FakeProvider(), Broken(), data_dir=tmp_path)
     r = TestClient(app).post("/api/tts", json={"text": "hi", "language": "en"})
-    assert r.status_code == 503 and r.json() == {"detail": "down"}
+    assert r.status_code == 503 and r.json() == {"detail": "speech service unavailable"}
 
 
 def test_feedback_written_and_counted(client: TestClient, tmp_path: Path) -> None:
@@ -176,3 +176,40 @@ def test_feedback_written_and_counted(client: TestClient, tmp_path: Path) -> Non
         "rejected": 1,
     }
     assert client.post("/api/feedback", json={**base, "action": "nope"}).status_code == 422
+
+
+def test_speech_error_detail_is_not_leaked(tmp_path: Path) -> None:
+    class Broken(FakeSpeech):
+        def synthesize(self, text: str, language: str) -> bytes:
+            raise SpeechError("down sk-secret")
+
+    r = TestClient(create_app(FakeProvider(), Broken(), data_dir=tmp_path)).post(
+        "/api/tts", json={"text": "hi", "language": "en"}
+    )
+    assert "sk-secret" not in r.text
+
+
+def test_voice_content_length_checks(client: TestClient) -> None:
+    r = client.post("/api/voice", content=b"x", headers={"content-length": str(11 * 1024 * 1024)})
+    assert r.status_code == 413
+    # chunked upload without a length is refused
+    r = client.post(
+        "/api/voice", content=iter([b"x"]), headers={"content-type": "multipart/form-data"}
+    )
+    assert r.status_code == 411
+
+
+def test_default_speech_follows_fake_provider(tmp_path: Path) -> None:
+    app = create_app(FakeProvider(), data_dir=tmp_path)
+    assert TestClient(app).get("/api/health").json()["speech"] == "fake"
+
+
+def test_feedback_limits_and_bad_lines(client: TestClient, tmp_path: Path) -> None:
+    base = {"ticket_id": "t1", "input_sha256": "a" * 64, "route": "auto_draft", "action": "edited"}
+    assert client.post("/api/feedback", json={**base, "final_text": "x" * 10001}).status_code == 422
+    assert client.post("/api/feedback", json={**base, "input_sha256": "z" * 64}).status_code == 422
+    assert client.post("/api/feedback", json={**base, "ticket_id": "t" * 101}).status_code == 422
+    client.post("/api/feedback", json=base)
+    with (tmp_path / "data" / "feedback.jsonl").open("a") as f:
+        f.write("{torn\n")
+    assert client.get("/api/feedback/stats").json()["total"] == 1
